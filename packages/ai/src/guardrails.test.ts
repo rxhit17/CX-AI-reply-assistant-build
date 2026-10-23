@@ -256,3 +256,53 @@ describe('validateDraft', () => {
     expect(blockingMessages(r).join(' ')).toMatch(/grounded_figures/);
   });
 });
+
+describe('delivery estimate figures', () => {
+  it('allows quoting day counts from the verified delivery estimate', () => {
+    const r = failing(
+      base({
+        eligibility: [],
+        reply: 'Your order is expected in 2 days.',
+        deliveryEstimate: {
+          state: 'in_transit',
+          expected_on: '2026-10-25',
+          earliest: null,
+          latest: null,
+          days_until: 2,
+          basis: 'carrier_estimate',
+        },
+      }),
+    );
+    expect(r).not.toContain('grounded_figures');
+  });
+  it('still blocks day counts that match nothing verified', () => {
+    const r = failing(
+      base({
+        eligibility: [],
+        reply: 'Your order is expected in 9 days.',
+        deliveryEstimate: {
+          state: 'in_transit',
+          expected_on: '2026-10-25',
+          earliest: null,
+          latest: null,
+          days_until: 2,
+          basis: 'carrier_estimate',
+        },
+      }),
+    );
+    expect(r).toContain('grounded_figures');
+  });
+});
+
+describe('internal source labels', () => {
+  it.each([
+    'Per our policy (S1), you have 7 days.',
+    'The period is 7 days. (Source : S1)',
+    'See (Fuente: S2).',
+  ])('blocks: %s', (reply) => expect(failing(base({ reply }))).toContain('no_source_labels'));
+  it('does not flag ordinary text', () => {
+    expect(failing(base({ reply: 'Size S is available. The period is 7 days.' }))).not.toContain(
+      'no_source_labels',
+    );
+  });
+});

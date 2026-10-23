@@ -4,7 +4,7 @@
  * as a normal draft (the graph retries once, then falls back safely).
  */
 import type { Eligibility, GuardrailResult } from '@cx/shared';
-import type { OrderFacts } from './policy/rules.js';
+import type { DeliveryEstimate, OrderFacts } from './policy/rules.js';
 
 export interface GuardrailSource {
   id: string;
@@ -20,6 +20,8 @@ export interface GuardrailInput {
   sources: GuardrailSource[];
   eligibility: Eligibility[];
   order: OrderFacts | null;
+  /** Computed delivery state; its day counts are verified facts the reply may quote. */
+  deliveryEstimate?: DeliveryEstimate | null;
   /** Names of every OTHER brand in the system. */
   otherBrandNames: string[];
   /** The customer has sent at least one image in this conversation. */
@@ -52,6 +54,7 @@ const fail = (
   detail: string,
 ): GuardrailResult => ({ check, passed: false, severity, detail });
 
+const SOURCE_LABEL = /(\(\s*(source|sources|fuente|fuentes|quelle)\s*:|\bS[1-9]\b)/i;
 const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i;
 
 const LEAK_TERMS =
@@ -129,6 +132,10 @@ function collectAllowedFigures(input: GuardrailInput): { counts: Set<number>; mo
     if (typeof w === 'number') counts.add(w * 24);
     const thr = e.details.free_shipping_threshold;
     if (typeof thr === 'number') money.add(thr);
+  }
+  const de = input.deliveryEstimate;
+  if (de) {
+    for (const v of Object.values(de)) if (typeof v === 'number') counts.add(Math.abs(v));
   }
   if (input.order) {
     money.add(input.order.total);
@@ -315,6 +322,17 @@ export function validateDraft(input: GuardrailInput): GuardrailResult[] {
           'The draft exposes internal identifiers or system details',
         )
       : pass('no_internal_details'),
+  );
+
+  // --- internal source labels must never reach the customer -----------------------------------------------
+  out.push(
+    SOURCE_LABEL.test(text)
+      ? fail(
+          'no_source_labels',
+          'blocking',
+          'The draft contains an internal source label such as "S1" or "(Source: …)"',
+        )
+      : pass('no_source_labels'),
   );
 
   // --- photos ------------------------------------------------------------------------------------------------------

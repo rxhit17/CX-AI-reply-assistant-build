@@ -353,3 +353,67 @@ describe('brand voice', () => {
     expect(state.replyLanguage).toBe('en');
   });
 });
+
+describe('model-based compliance check (non-English only)', () => {
+  const spanish = [msg('m1', 'customer', 'Hola, ¿cuándo llegará mi pedido?')];
+  const transit = order({
+    status: 'in_transit',
+    delivered_at: null,
+    estimated_delivery_at: '2026-10-25T00:00:00Z',
+  });
+
+  it('is not called for English replies (cost control)', async () => {
+    const judge = vi.fn();
+    const h = makeHarness({
+      messages: [msg('m1', 'customer', 'Hello')],
+      llm: { ...createMockLlm(), judge },
+    });
+    await runGeneration(h.deps, h.input);
+    expect(judge).not.toHaveBeenCalled();
+  });
+
+  it('blocks when the judge quotes text that really is in the reply', async () => {
+    const judge = vi.fn().mockResolvedValue({
+      value: {
+        violations: [{ type: 'claimed_action_done', quote: 'is on its way', reason: 'test' }],
+      },
+      usage: { input: 1, output: 1 },
+      model: 'test',
+    });
+    const h = makeHarness({
+      messages: spanish,
+      order: transit,
+      llm: { ...createMockLlm(), judge },
+    });
+    const { state } = await runGeneration(h.deps, h.input);
+    expect(judge).toHaveBeenCalled();
+    expect(state.fallbackUsed).toBe(true);
+    expect(state.guardrails.find((g) => g.check === 'llm_compliance_check')?.passed).toBe(false);
+  });
+
+  it('discards findings whose quote does not appear in the reply', async () => {
+    const judge = vi.fn().mockResolvedValue({
+      value: {
+        violations: [
+          {
+            type: 'promised_unsupported_outcome',
+            quote: 'we guarantee a refund',
+            reason: 'hallucinated',
+          },
+        ],
+      },
+      usage: { input: 1, output: 1 },
+      model: 'test',
+    });
+    const h = makeHarness({
+      messages: spanish,
+      order: transit,
+      llm: { ...createMockLlm(), judge },
+    });
+    const { state } = await runGeneration(h.deps, h.input);
+    expect(state.fallbackUsed).toBe(false);
+    expect(state.guardrails.find((g) => g.check === 'llm_compliance_check')).toMatchObject({
+      passed: true,
+    });
+  });
+});

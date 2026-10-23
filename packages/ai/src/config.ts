@@ -3,6 +3,8 @@ export interface AiConfig {
   openaiApiKey?: string;
   chatModel: string;
   visionModel: string;
+  /** Model for the non-English compliance check; defaults to the chat model when unset. */
+  judgeModel?: string;
   embeddingModel: string;
   embeddingDimensions: number;
   retrieval: RetrievalThresholds;

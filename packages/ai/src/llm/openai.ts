@@ -54,7 +54,8 @@ function toResult<T>(out: { raw: unknown; parsed: T }, model: string): LlmResult
 export function createOpenAiLlm(config: AiConfig): LlmPort {
   const chat = makeModel(config, config.chatModel, 0.2);
   const vision = makeModel(config, config.visionModel, 0);
-  const judgeModel = makeModel(config, config.chatModel, 0);
+  const judgeName = config.judgeModel ?? config.chatModel;
+  const judgeModel = makeModel(config, judgeName, 0);
 
   async function structured<S extends z.ZodType>(
     model: ChatOpenAI,
@@ -112,7 +113,7 @@ export function createOpenAiLlm(config: AiConfig): LlmPort {
         new SystemMessage(JUDGE_SYSTEM),
         new HumanMessage(`<facts>\n${facts}\n</facts>\n\n<reply>\n${reply}\n</reply>`),
       ];
-      return structured(judgeModel, judgeSchema, 'compliance_check', messages, config.chatModel);
+      return structured(judgeModel, judgeSchema, 'compliance_check', messages, judgeName);
     },
   };
 }

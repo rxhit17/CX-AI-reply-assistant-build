@@ -83,10 +83,22 @@ export type ComposedReply = z.infer<typeof composedReplySchema>;
 
 export const judgeSchema = z.object({
   violations: z
-    .array(z.string())
-    .describe(
-      'Each way the reply promises, claims or states something not supported by the provided facts. Empty if none.',
-    ),
+    .array(
+      z.object({
+        type: z
+          .enum([
+            'promised_unsupported_outcome',
+            'claimed_action_done',
+            'wrong_figure_or_condition',
+          ])
+          .describe('Kind of problem'),
+        quote: z
+          .string()
+          .describe('The EXACT words copied from the reply that contain the problem'),
+        reason: z.string().describe('Why the quoted words are not supported by the facts'),
+      }),
+    )
+    .describe('Explicit problems only. Empty if there are none.'),
 });
 export type JudgeResult = z.infer<typeof judgeSchema>;
 

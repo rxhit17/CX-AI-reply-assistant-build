@@ -7,6 +7,7 @@ export function toAiConfig(env: Env): AiConfig {
     openaiApiKey: env.OPENAI_API_KEY,
     chatModel: env.OPENAI_CHAT_MODEL,
     visionModel: env.OPENAI_VISION_MODEL,
+    judgeModel: env.OPENAI_JUDGE_MODEL,
     embeddingModel: env.OPENAI_EMBEDDING_MODEL,
     embeddingDimensions: env.EMBEDDING_DIMENSIONS,
     timeoutMs: env.REQUEST_TIMEOUT_MS,

@@ -358,6 +358,7 @@ export function buildGenerationGraph(deps: GraphDeps) {
         sources: s.sources.map((x) => ({ id: x.id, title: x.title, content: x.content })),
         eligibility: s.eligibility,
         order: s.orderFacts,
+        deliveryEstimate: s.deliveryEstimate,
         otherBrandNames: await ports.listOtherBrandNames(s.brandId),
         customerSentImage: s.customerSentImage,
         priorAgentMessage: s.priorAgentMessage,
@@ -387,15 +388,31 @@ export function buildGenerationGraph(deps: GraphDeps) {
       });
       const judged = await llm.judge({ reply: s.proposedResponse!, facts });
       Object.assign(update, usageOf(judged));
+      // Findings must quote the reply verbatim; a flag whose quote is not in the reply is discarded as unreliable.
+      const norm = (x: string) => x.toLowerCase().replace(/s+/g, ' ').trim();
+      const reply = norm(s.proposedResponse!);
+      const confirmed = judged.value.violations.filter(
+        (v) => v.quote.trim().length >= 6 && reply.includes(norm(v.quote)),
+      );
       results.push(
-        judged.value.violations.length
+        confirmed.length
           ? {
               check: 'llm_compliance_check',
               passed: false,
               severity: 'blocking',
-              detail: judged.value.violations.join(' | ').slice(0, 400),
+              detail: confirmed
+                .map((v) => `${v.type}: "${v.quote}" (${v.reason})`)
+                .join(' | ')
+                .slice(0, 500),
             }
-          : { check: 'llm_compliance_check', passed: true, severity: 'info' },
+          : {
+              check: 'llm_compliance_check',
+              passed: true,
+              severity: 'info',
+              detail: judged.value.violations.length
+                ? `Discarded ${judged.value.violations.length} unverifiable finding(s)`
+                : undefined,
+            },
       );
     }
     void ctx;
@@ -610,6 +627,7 @@ export interface GenerationOutcome {
 export async function runGeneration(
   deps: GraphDeps,
   input: GenerationInput,
+  opts: { signal?: AbortSignal } = {},
 ): Promise<GenerationOutcome> {
   const graph = buildGenerationGraph(deps);
   const state = (await graph.invoke(
@@ -623,7 +641,7 @@ export async function runGeneration(
       extraInstruction: input.extraInstruction ?? null,
       startedAt: Date.now(),
     },
-    { configurable: { thread_id: randomUUID() } },
+    { configurable: { thread_id: randomUUID() }, signal: opts.signal },
   )) as GState;
   return { generationId: state.generationId, state };
 }
