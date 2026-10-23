@@ -1,0 +1,23 @@
+{
+  "name": "@cx/ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@cx/shared": "workspace:*",
+    "@langchain/core": "^1.3.0",
+    "@langchain/langgraph": "^1.5.2",
+    "@langchain/openai": "^1.7.0",
+    "langchain": "^1.5.19",
+    "zod": "^4.6.7"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "name": "cx-ai-assistant",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "packageManager": "pnpm@12.15.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter @cx/api --filter @cx/web dev",
+    "dev:api": "pnpm --filter @cx/api dev",
+    "dev:web": "pnpm --filter @cx/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "pnpm -r test",
+    "test:e2e": "playwright test",
+    "db:start": "supabase start",
+    "db:reset": "supabase db reset",
+    "db:seed": "tsx scripts/seed.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@playwright/test": "^1.64.1",
+    "eslint": "^9.39.0",
+    "globals": "^16.0.0",
+    "prettier": "^3.9.10",
+    "supabase": "^2.122.0",
+    "tsx": "^4.23.15",
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^5.0.5"
+  }
+}
