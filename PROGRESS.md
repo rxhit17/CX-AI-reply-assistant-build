@@ -26,16 +26,10 @@ See `docs/ACCEPTANCE.md` (updated per phase). Nothing is marked done without ver
 - `OPENAI_API_KEY` for real-model eval and retrieval calibration.
 - Supabase Cloud project (URL, anon key, service-role key, DB URL), Railway + Vercel access for Phase 10.
 
-## Phase 2 – Database & auth ⏳
-Written, **not yet applied to the Supabase project / not yet verified against it**:
-- `supabase/migrations/…0001_core_schema.sql` – 16 tables, composite brand-consistency FKs, KB version snapshots (DB-computed hash/version), RLS enabled everywhere.
-- `…0002_rls_policies.sql` – browser role is SELECT-only; all writes go through the API (service role after explicit authz); private storage bucket; Realtime publication.
-- `…0003_retrieval_and_draft_rpcs.sql` – `match_kb_hybrid` (brand filter inside SQL, RRF fusion, keyword-only fallback) and atomic `fn_save_generation / fn_edit_draft / fn_approve_draft / fn_send_draft / fn_discard_draft` with stale-policy checks.
-- `supabase/seed/data.ts` + `scripts/seed.ts` – 2 brands, 4 users, 8 customers, 8 orders, 18 KB entries, 8 conversations; relative dates; deterministic IDs; refuses non-local URLs unless explicitly overridden.
-- Remaining: apply migrations, run seed, RLS/brand-isolation SQL tests, Supabase Auth wiring in API/web.
-- Supabase Auth config: disable public sign-ups in the dashboard (Authentication → Sign In / Providers) — accounts are created by the seed/admin only.
-
-## How to apply (needs your input)
-1. Fill `.env` (see `.env.example`): `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `VITE_SUPABASE_*`, `OPENAI_API_KEY`.
-2. `pnpm exec supabase link --project-ref <ref>` then `pnpm exec supabase db push` (asks for the DB password), or paste the three migration files into the SQL editor in order.
-3. `SEED_ALLOW_REMOTE=true SEED_PASSWORD='<strong password>' pnpm db:seed`
+## Phase 2 – Database & auth ✅ (DB part; API/web auth wiring comes with Phase 3)
+- Dev database = user's Supabase Cloud project (, pooler ). Direct DB host is IPv6-only and unreachable from the dev machine, so  uses the session pooler.
+-  (scripts/migrate.ts) applies migrations 1–5 with checksum tracking;  is idempotent (ran twice OK). Demo logins: admin@demo.test, agent.bloom@demo.test, agent.nordic@demo.test, agent.multi@demo.test (password = SEED_PASSWORD in .env).
+- Migration 4: append-only tables allow cascade deletes. Migration 5: keyword search OR-semantics + definer-with-explicit-brand-check for match_kb_hybrid (both found by the integration tests).
+- **Integration tests: 24/24 pass** (): anon sees nothing; agents see only their brand; browser writes denied; privileged RPCs denied; SQL retrieval brand isolation (incl. agent asking for another brand's id → empty); inactive entries excluded; KB version bump/snapshot/immutability; draft edit→approve→send with 5 concurrent sends → exactly 1 message; cross-brand actor forbidden; stale policy blocks approval; supersede/discard; blocking guardrail blocks approval; composite FKs reject cross-brand rows; attachment size/mime constraints.
+- Not yet verified: vector search path (needs embeddings, Phase 4), Realtime delivery, storage policies (Phase 3).
+- TODO for user: disable public sign-ups in Supabase dashboard.
