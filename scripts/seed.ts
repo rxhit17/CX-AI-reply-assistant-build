@@ -29,7 +29,9 @@ if (!isLocal && !(process.env.SEED_ALLOW_REMOTE === 'true' && process.env.SEED_P
   );
 }
 
-const db = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+const db = createClient(url, serviceKey, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
 const now = Date.now();
 const DAY = 86_400_000;
 const daysAgo = (d: number) => new Date(now - d * DAY).toISOString();
@@ -53,12 +55,15 @@ async function ensureUsers(): Promise<Map<string, string>> {
         email_confirm: true,
         user_metadata: { full_name: u.full_name },
       });
-      if (created.error || !created.data.user) throw new Error(`createUser ${u.email}: ${created.error?.message}`);
+      if (created.error || !created.data.user)
+        throw new Error(`createUser ${u.email}: ${created.error?.message}`);
       uid = created.data.user.id;
     }
     userIds.set(u.key, uid);
     must(
-      await db.from('profiles').upsert({ id: uid, email: u.email, full_name: u.full_name, role: u.role }),
+      await db
+        .from('profiles')
+        .upsert({ id: uid, email: u.email, full_name: u.full_name, role: u.role }),
       `profile ${u.email}`,
     );
   }
@@ -69,11 +74,15 @@ async function main() {
   const userIds = await ensureUsers();
 
   must(
-    await db.from('brands').upsert(brands.map((b) => ({ id: id(`brand:${b.key}`), name: b.name, slug: b.slug }))),
+    await db
+      .from('brands')
+      .upsert(brands.map((b) => ({ id: id(`brand:${b.key}`), name: b.name, slug: b.slug }))),
     'brands',
   );
   must(
-    await db.from('brand_settings').upsert(brands.map((b) => ({ brand_id: id(`brand:${b.key}`), ...b.settings }))),
+    await db
+      .from('brand_settings')
+      .upsert(brands.map((b) => ({ brand_id: id(`brand:${b.key}`), ...b.settings }))),
     'brand_settings',
   );
   const memberships = users.flatMap((u) =>
@@ -113,11 +122,17 @@ async function main() {
     'orders',
   );
   must(
-    await db.from('order_items').upsert(
-      orders.flatMap((o) =>
-        o.items.map((it, i) => ({ id: id(`item:${o.key}:${i}`), order_id: id(`order:${o.key}`), ...it })),
+    await db
+      .from('order_items')
+      .upsert(
+        orders.flatMap((o) =>
+          o.items.map((it, i) => ({
+            id: id(`item:${o.key}:${i}`),
+            order_id: id(`order:${o.key}`),
+            ...it,
+          })),
+        ),
       ),
-    ),
     'order_items',
   );
 
@@ -156,7 +171,8 @@ async function main() {
     'conversations',
   );
 
-  const agentFor = (brand: string) => userIds.get(brand === 'bloom' ? 'bloom-agent' : 'nordic-agent')!;
+  const agentFor = (brand: string) =>
+    userIds.get(brand === 'bloom' ? 'bloom-agent' : 'nordic-agent')!;
   must(
     await db.from('messages').upsert(
       conversations.flatMap((c) => {
@@ -182,7 +198,9 @@ async function main() {
     `Seeded: ${brands.length} brands, ${users.length} users, ${customers.length} customers, ` +
       `${orders.length} orders, ${knowledgeBase.length} KB entries, ${conversations.length} conversations.`,
   );
-  console.log(`Demo logins (password from SEED_PASSWORD or default): ${users.map((u) => u.email).join(', ')}`);
+  console.log(
+    `Demo logins (password from SEED_PASSWORD or default): ${users.map((u) => u.email).join(', ')}`,
+  );
 }
 
 main().catch((err) => {

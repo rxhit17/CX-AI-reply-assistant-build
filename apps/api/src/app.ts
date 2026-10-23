@@ -2,7 +2,11 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { ZodError } from 'zod';
+import { authenticate } from './auth.js';
+import type { Deps } from './deps.js';
 import type { Env } from './env.js';
+import { brandRoutes } from './routes/brands.js';
+import { conversationRoutes } from './routes/conversations.js';
 
 export interface ReadinessCheck {
   name: string;
@@ -11,10 +15,12 @@ export interface ReadinessCheck {
 
 export interface AppOptions {
   env: Env;
+  /** Privileged database client; when omitted only the system routes are served. */
+  db?: Deps['db'];
   readiness?: ReadinessCheck[];
 }
 
-export async function buildApp({ env, readiness = [] }: AppOptions): Promise<FastifyInstance> {
+export async function buildApp({ env, db, readiness = [] }: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
       level: env.LOG_LEVEL,
@@ -30,7 +36,13 @@ export async function buildApp({ env, readiness = [] }: AppOptions): Promise<Fas
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: false,
   });
-  await app.register(rateLimit, { global: true, max: 300, timeWindow: '1 minute' });
+  await app.register(rateLimit, {
+    global: true,
+    max: 300,
+    timeWindow: '1 minute',
+    // authenticated traffic is limited per account, anonymous traffic per IP
+    keyGenerator: (req) => req.headers.authorization?.slice(-24) ?? req.ip,
+  });
 
   app.setErrorHandler((err: unknown, req, reply) => {
     if (err instanceof ZodError) {
@@ -67,6 +79,20 @@ export async function buildApp({ env, readiness = [] }: AppOptions): Promise<Fas
       .status(ok ? 200 : 503)
       .send({ status: ok ? 'ready' : 'not_ready', checks: results });
   });
+
+  if (db) {
+    const deps: Deps = { env, db };
+    await app.register(
+      async (api) => {
+        api.addHook('onRequest', async (req) => {
+          req.user = await authenticate(req, db);
+        });
+        await api.register(brandRoutes, deps);
+        await api.register(conversationRoutes, deps);
+      },
+      { prefix: '/api' },
+    );
+  }
 
   return app;
 }

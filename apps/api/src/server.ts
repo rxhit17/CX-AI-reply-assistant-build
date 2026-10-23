@@ -9,6 +9,7 @@ const admin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 const app = await buildApp({
+  db: admin,
   env,
   readiness: [
     {
