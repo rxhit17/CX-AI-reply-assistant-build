@@ -21,6 +21,12 @@ export const policyConditionsSchema = z
     requires_photo: z.boolean().optional(),
     report_within_days: z.number().int().positive().optional(),
     cancellable_until: z.enum(['processing', 'shipped']).optional(),
+    /** Typical delivery time after dispatch, in business days: [min, max]. */
+    delivery_business_days: z
+      .tuple([z.number().int().positive(), z.number().int().positive()])
+      .optional(),
+    /** After the standard window the brand may still review individual cases (never a guaranteed outcome). */
+    discretionary_review: z.boolean().optional(),
   })
   .strict();
 export type PolicyConditions = z.infer<typeof policyConditionsSchema>;

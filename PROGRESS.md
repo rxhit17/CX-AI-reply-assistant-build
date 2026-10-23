@@ -31,11 +31,13 @@ _Last updated: 2026-10-23_
 - TODO for user: disable public sign-ups in the Supabase dashboard (Authentication → Sign In / Providers).
 
 ## Phase 3 – Conversation API ✅ (UI not started)
+
 - Fastify routes with Bearer-JWT auth (user + role + brand memberships resolved from the DB): brands (admin-only settings PATCH), conversations (list/search/filter, detail, create, close/reopen), order, messages (idempotent on client_message_id, race-safe), read receipts, image upload (magic-byte sniffing, 5 MB, PNG/JPEG/WebP/GIF, private bucket, signed URLs).
 - Other-brand resources return 404, not 403. Per-route rate limits.
 - Tests: 25 API unit tests; API integration tests (auth, scoping, dedupe under 3 concurrent sends, attachment lifecycle, spoof/oversize/cross-brand rejection, admin-only settings).
 
 ## Phase 4 – Knowledge base + hybrid RAG ✅ (KB management UI not started)
+
 - KB API: list/filter/search, get, versions, create/update (admin only), archive (soft delete) + restore, reembed (skips unchanged unless force), retrieval preview with scores.
 - Embeddings (LangChain OpenAIEmbeddings text-embedding-3-small, 1536d): only when content_hash changes; failure is recorded on the row and content is kept; keyword fallback verified. 18 seeded entries embedded; second run skipped all 18.
 - Retrieval (packages/ai): brand isolation in SQL; widened candidate fetch; relevance = absolute similarity + relative margin (vector mode) or fused rank (keyword mode); explicit insufficient-context result.
@@ -46,5 +48,6 @@ _Last updated: 2026-10-23_
 ## Next: Phase 5–7 – LangGraph workflow, tools, deterministic policy rules, guardrails, draft API
 
 ## Blockers / needs user action
+
 - Disable public sign-ups in Supabase (Authentication → Sign In / Providers).
 - Railway/Vercel access for Phase 10.

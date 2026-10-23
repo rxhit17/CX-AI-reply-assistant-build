@@ -100,7 +100,7 @@ export const knowledgeBase: KbSeed[] = [
     title: 'Bloom Botanics Refund Policy',
     content:
       'Refunds are available when a return or damage claim is made within 7 days of delivery. Approved refunds go back to the original payment method within 5-7 business days after we receive and inspect the returned item. Requests made after 7 days are not eligible for a standard refund; our support team may review exceptional cases individually, but no refund can be promised in advance.',
-    conditions: { window_days: 7, window_anchor: 'delivery' },
+    conditions: { window_days: 7, window_anchor: 'delivery', discretionary_review: true },
   },
   {
     key: 'bloom-shipping',
@@ -109,7 +109,7 @@ export const knowledgeBase: KbSeed[] = [
     title: 'Bloom Botanics Shipping Policy',
     content:
       'Shipping is free on orders over $50. Orders of $50 or less ship for a flat $5.95. Standard delivery takes 3-5 business days after dispatch. Live plants ship Monday to Wednesday only so they never sit in a warehouse over a weekend.',
-    conditions: { free_shipping_threshold: 50 },
+    conditions: { free_shipping_threshold: 50, delivery_business_days: [3, 5] },
   },
   {
     key: 'bloom-cancel',
@@ -127,7 +127,7 @@ export const knowledgeBase: KbSeed[] = [
     title: 'Bloom Botanics Damaged Items Policy',
     content:
       'If an item or plant arrives damaged, please report it within 48 hours of delivery and include a clear photo of the damage and the packaging. Once verified we will send a free replacement or issue a full refund (including shipping), whichever the customer prefers. Damage reported after 48 hours is reviewed case by case and a replacement or refund cannot be guaranteed.',
-    conditions: { report_within_days: 2, requires_photo: true },
+    conditions: { report_within_days: 2, requires_photo: true, discretionary_review: true },
   },
   {
     key: 'bloom-missing',
@@ -178,7 +178,7 @@ export const knowledgeBase: KbSeed[] = [
     title: 'Nordic Living Refund Policy',
     content:
       'Refunds are available for returns initiated within 30 days of delivery. After the returned item has been received and inspected, the refund is processed within 10 business days to the original payment method; original shipping charges are refunded only for faulty or damaged goods. Requests after 30 days are not eligible for a standard refund, though Customer Care may consider exceptional circumstances individually without any guarantee.',
-    conditions: { window_days: 30, window_anchor: 'delivery' },
+    conditions: { window_days: 30, window_anchor: 'delivery', discretionary_review: true },
   },
   {
     key: 'nordic-shipping',
@@ -187,7 +187,7 @@ export const knowledgeBase: KbSeed[] = [
     title: 'Nordic Living Shipping Policy',
     content:
       'Complimentary shipping is provided on orders over $100. Orders of $100 or less incur a flat shipping fee of $12. Standard delivery takes 5-8 business days after dispatch; large furniture is delivered by appointment with a two-person carrier team.',
-    conditions: { free_shipping_threshold: 100 },
+    conditions: { free_shipping_threshold: 100, delivery_business_days: [5, 8] },
   },
   {
     key: 'nordic-cancel',
@@ -205,7 +205,7 @@ export const knowledgeBase: KbSeed[] = [
     title: 'Nordic Living Damaged Goods Policy',
     content:
       "Damage to goods on arrival must be reported within 14 days of delivery, together with photographs of the item and its packaging. After verification we will arrange a complimentary collection and offer either a replacement or a full refund including shipping charges, at the customer's choice. Damage reported after 14 days is assessed individually without any guarantee of remedy.",
-    conditions: { report_within_days: 14, requires_photo: true },
+    conditions: { report_within_days: 14, requires_photo: true, discretionary_review: true },
   },
   {
     key: 'nordic-missing',

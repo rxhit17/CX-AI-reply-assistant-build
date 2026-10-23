@@ -6,64 +6,71 @@ Dataset: 43 labelled queries (39 English: 27 answerable, 12 must-abstain; 4 non-
 Every search is brand-isolated in SQL, so a query is only ever scored against its own brand's ~9 entries.
 
 ## Selection rule (v2, revised after the first run)
+
 Run 1 picked the lowest absolute threshold meeting a ≤10% false-sufficient limit and produced 22% precision (see retrieval-calibration-run1-absolute-threshold-only.md): about four irrelevant policies handed to the model per query. Rule v2 adds a relative-margin criterion and maximises F1 subject to:
+
 - false-sufficient rate on out-of-scope + injection queries ≤ 10% (the dangerous error: it lets the model improvise policy), and
 - ≥ 85% of answerable queries keeping at least one relevant entry.
 
 **Caveat:** the rule was changed after seeing results and the dataset is small (43 queries), so these figures are tuned in-sample and optimistic. Re-run pnpm calibrate when the KB changes materially and extend the dataset.
 
 ## Result
+
 **`RETRIEVAL_MIN_VECTOR_SIMILARITY=0.26` and `RETRIEVAL_RELATIVE_MARGIN=0.04`**
 
-| Metric @ τ=0.26, margin=0.04 (English) | Value |
-|---|---|
-| Entry precision | 77% |
-| Entry recall | 77% |
-| F1 | 0.77 |
-| Answerable queries with ≥1 relevant entry above threshold | 23/27 (85%) |
-| Top-1 hit is relevant | 22/27 (81%) |
-| Out-of-scope/injection queries wrongly treated as sufficient | 1/12 (8%) |
+| Metric @ τ=0.26, margin=0.04 (English)                       | Value       |
+| ------------------------------------------------------------ | ----------- |
+| Entry precision                                              | 77%         |
+| Entry recall                                                 | 77%         |
+| F1                                                           | 0.77        |
+| Answerable queries with ≥1 relevant entry above threshold    | 23/27 (85%) |
+| Top-1 hit is relevant                                        | 22/27 (81%) |
+| Out-of-scope/injection queries wrongly treated as sufficient | 1/12 (8%)   |
 
 Best-match similarity distribution (English): answerable p10=0.26 median=0.46; must-abstain median=0.11 p90=0.25 max=0.33.
 
 ### Sweep over τ at margin 0.04 (English)
-| τ | precision | recall | F1 | answerable hit | false-sufficient |
-|---|---|---|---|---|---|
-| 0.2 | 0.65 | 0.80 | 0.72 | 24/27 | 3/12 |
-| 0.22 | 0.67 | 0.80 | 0.73 | 24/27 | 3/12 |
-| 0.24 | 0.69 | 0.80 | 0.74 | 24/27 | 3/12 |
-| 0.26 | 0.77 | 0.77 | 0.77 | 23/27 | 1/12 |
-| 0.28 | 0.78 | 0.70 | 0.74 | 21/27 | 1/12 |
-| 0.3 | 0.81 | 0.70 | 0.75 | 21/27 | 1/12 |
-| 0.32 | 0.81 | 0.70 | 0.75 | 21/27 | 1/12 |
-| 0.34 | 0.84 | 0.70 | 0.76 | 21/27 | 0/12 |
-| 0.36 | 0.84 | 0.70 | 0.76 | 21/27 | 0/12 |
-| 0.38 | 0.84 | 0.70 | 0.76 | 21/27 | 0/12 |
-| 0.4 | 0.83 | 0.63 | 0.72 | 19/27 | 0/12 |
-| 0.42 | 0.84 | 0.53 | 0.65 | 16/27 | 0/12 |
-| 0.44 | 0.82 | 0.47 | 0.60 | 14/27 | 0/12 |
-| 0.46 | 0.93 | 0.43 | 0.59 | 13/27 | 0/12 |
-| 0.48 | 1.00 | 0.30 | 0.46 | 9/27 | 0/12 |
-| 0.5 | 1.00 | 0.27 | 0.42 | 8/27 | 0/12 |
+
+| τ    | precision | recall | F1   | answerable hit | false-sufficient |
+| ---- | --------- | ------ | ---- | -------------- | ---------------- |
+| 0.2  | 0.65      | 0.80   | 0.72 | 24/27          | 3/12             |
+| 0.22 | 0.67      | 0.80   | 0.73 | 24/27          | 3/12             |
+| 0.24 | 0.69      | 0.80   | 0.74 | 24/27          | 3/12             |
+| 0.26 | 0.77      | 0.77   | 0.77 | 23/27          | 1/12             |
+| 0.28 | 0.78      | 0.70   | 0.74 | 21/27          | 1/12             |
+| 0.3  | 0.81      | 0.70   | 0.75 | 21/27          | 1/12             |
+| 0.32 | 0.81      | 0.70   | 0.75 | 21/27          | 1/12             |
+| 0.34 | 0.84      | 0.70   | 0.76 | 21/27          | 0/12             |
+| 0.36 | 0.84      | 0.70   | 0.76 | 21/27          | 0/12             |
+| 0.38 | 0.84      | 0.70   | 0.76 | 21/27          | 0/12             |
+| 0.4  | 0.83      | 0.63   | 0.72 | 19/27          | 0/12             |
+| 0.42 | 0.84      | 0.53   | 0.65 | 16/27          | 0/12             |
+| 0.44 | 0.82      | 0.47   | 0.60 | 14/27          | 0/12             |
+| 0.46 | 0.93      | 0.43   | 0.59 | 13/27          | 0/12             |
+| 0.48 | 1.00      | 0.30   | 0.46 | 9/27           | 0/12             |
+| 0.5  | 1.00      | 0.27   | 0.42 | 8/27           | 0/12             |
 
 ### Trade-offs
+
 - Lowering τ raises recall but admits unrelated policies (precision drops); raising it makes the assistant abstain on valid but loosely worded questions.
 - Entries below τ are never presented to the model as evidence; if none pass, the graph produces a clarification/escalation draft instead of a policy answer.
 
 ## Non-English raw queries (before query translation), at τ=0.26
+
 3/4 found a relevant entry via vectors alone. The graph translates the search query to English first (rewriteQuery), so this is a lower bound; keyword (FTS) search is English-only.
 
 ## Keyword-only fallback (no embeddings)
+
 Fused scores are rank-based (RRF), so `RETRIEVAL_MIN_FUSED_SCORE` effectively means "keyword rank ≤ N".
 
 | min fused | answerable hit | false-sufficient | precision |
-|---|---|---|---|
-| 0.0125 | 25/27 | 3/12 | 0.19 |
-| 0.0135 | 25/27 | 3/12 | 0.19 |
-| 0.0145 | 25/27 | 3/12 | 0.19 |
-| 0.015 | 25/27 | 3/12 | 0.20 |
-| 0.0155 | 24/27 | 3/12 | 0.26 |
-| 0.0159 | 22/27 | 3/12 | 0.42 |
-| 0.0162 | 20/27 | 3/12 | 0.71 |
+| --------- | -------------- | ---------------- | --------- |
+| 0.0125    | 25/27          | 3/12             | 0.19      |
+| 0.0135    | 25/27          | 3/12             | 0.19      |
+| 0.0145    | 25/27          | 3/12             | 0.19      |
+| 0.015     | 25/27          | 3/12             | 0.20      |
+| 0.0155    | 24/27          | 3/12             | 0.26      |
+| 0.0159    | 22/27          | 3/12             | 0.42      |
+| 0.0162    | 20/27          | 3/12             | 0.71      |
 
 Keyword mode is a degraded fallback: it cannot see paraphrases and has weak abstention. Drafts built from keyword-only retrieval are flagged to the agent.
