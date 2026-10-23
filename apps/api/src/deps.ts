@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { AiConfig, EmbeddingService } from '@cx/ai';
 import type { Env } from './env.js';
 
 /**
@@ -8,4 +9,7 @@ import type { Env } from './env.js';
 export interface Deps {
   env: Env;
   db: SupabaseClient;
+  aiConfig: AiConfig;
+  /** null when no embedding provider is configured; retrieval then runs keyword-only. */
+  embeddings: EmbeddingService | null;
 }

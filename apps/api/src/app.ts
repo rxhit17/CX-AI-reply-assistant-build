@@ -5,8 +5,11 @@ import { ZodError } from 'zod';
 import { authenticate } from './auth.js';
 import type { Deps } from './deps.js';
 import type { Env } from './env.js';
+import type { EmbeddingService } from '@cx/ai';
+import { toAiConfig } from './ai-config.js';
 import { brandRoutes } from './routes/brands.js';
 import { conversationRoutes } from './routes/conversations.js';
+import { knowledgeBaseRoutes } from './routes/knowledge-base.js';
 
 export interface ReadinessCheck {
   name: string;
@@ -17,10 +20,16 @@ export interface AppOptions {
   env: Env;
   /** Privileged database client; when omitted only the system routes are served. */
   db?: Deps['db'];
+  embeddings?: EmbeddingService | null;
   readiness?: ReadinessCheck[];
 }
 
-export async function buildApp({ env, db, readiness = [] }: AppOptions): Promise<FastifyInstance> {
+export async function buildApp({
+  env,
+  db,
+  embeddings = null,
+  readiness = [],
+}: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
       level: env.LOG_LEVEL,
@@ -81,7 +90,7 @@ export async function buildApp({ env, db, readiness = [] }: AppOptions): Promise
   });
 
   if (db) {
-    const deps: Deps = { env, db };
+    const deps: Deps = { env, db, aiConfig: toAiConfig(env), embeddings };
     await app.register(
       async (api) => {
         api.addHook('onRequest', async (req) => {
@@ -89,6 +98,7 @@ export async function buildApp({ env, db, readiness = [] }: AppOptions): Promise
         });
         await api.register(brandRoutes, deps);
         await api.register(conversationRoutes, deps);
+        await api.register(knowledgeBaseRoutes, deps);
       },
       { prefix: '/api' },
     );

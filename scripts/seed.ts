@@ -122,17 +122,15 @@ async function main() {
     'orders',
   );
   must(
-    await db
-      .from('order_items')
-      .upsert(
-        orders.flatMap((o) =>
-          o.items.map((it, i) => ({
-            id: id(`item:${o.key}:${i}`),
-            order_id: id(`order:${o.key}`),
-            ...it,
-          })),
-        ),
+    await db.from('order_items').upsert(
+      orders.flatMap((o) =>
+        o.items.map((it, i) => ({
+          id: id(`item:${o.key}:${i}`),
+          order_id: id(`order:${o.key}`),
+          ...it,
+        })),
       ),
+    ),
     'order_items',
   );
 

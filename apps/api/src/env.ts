@@ -27,8 +27,9 @@ const envSchema = z.object({
   EMBEDDING_DIMENSIONS: z.coerce.number().int().positive().default(1536),
   LLM_MODE: z.enum(['openai', 'mock']).default('openai'),
 
-  RETRIEVAL_MIN_VECTOR_SIMILARITY: z.coerce.number().min(0).max(1).default(0.3),
-  RETRIEVAL_MIN_FUSED_SCORE: z.coerce.number().min(0).default(0.015),
+  RETRIEVAL_MIN_VECTOR_SIMILARITY: z.coerce.number().min(0).max(1).default(0.26),
+  RETRIEVAL_RELATIVE_MARGIN: z.coerce.number().min(0).max(1).default(0.04),
+  RETRIEVAL_MIN_FUSED_SCORE: z.coerce.number().min(0).default(0.0162),
   RETRIEVAL_TOP_K: z.coerce.number().int().min(1).max(20).default(5),
 
   RATE_LIMIT_AI_PER_AGENT_PER_MIN: z.coerce.number().int().positive().default(10),

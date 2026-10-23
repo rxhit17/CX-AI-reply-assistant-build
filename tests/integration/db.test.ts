@@ -477,14 +477,12 @@ describe('message idempotency & brand consistency constraints', () => {
       .from('message_attachments')
       .insert({ ...base, mime_type: 'image/png', size_bytes: 6_000_000 });
     expect(big.error?.code).toBe('23514');
-    const bad = await service
-      .from('message_attachments')
-      .insert({
-        ...base,
-        storage_path: base.storage_path + 'b',
-        mime_type: 'application/pdf',
-        size_bytes: 10,
-      });
+    const bad = await service.from('message_attachments').insert({
+      ...base,
+      storage_path: base.storage_path + 'b',
+      mime_type: 'application/pdf',
+      size_bytes: 10,
+    });
     expect(bad.error?.code).toBe('23514');
   });
 });

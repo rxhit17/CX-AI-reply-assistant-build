@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
+import { createEmbeddingService } from '@cx/ai';
+import { toAiConfig } from './ai-config.js';
 import { buildApp } from './app.js';
 import { loadEnv } from './env.js';
 
@@ -8,8 +10,13 @@ const admin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
+const aiConfig = toAiConfig(env);
+const embeddings =
+  aiConfig.llmMode === 'mock' || aiConfig.openaiApiKey ? createEmbeddingService(aiConfig) : null;
+
 const app = await buildApp({
   db: admin,
+  embeddings,
   env,
   readiness: [
     {
