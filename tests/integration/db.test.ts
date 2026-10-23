@@ -43,8 +43,7 @@ beforeAll(async () => {
 describe('RLS: read isolation', () => {
   it('anonymous clients see nothing', async () => {
     const anon = createClient(url, anonKey, opts);
-    const { data, error } = await anon.from('brands').select('id');
-    expect(error?.message ?? null).toBeNull; // may be a permission error or empty
+    const { data } = await anon.from('brands').select('id'); // permission error or empty: either is fine
     expect(data ?? []).toHaveLength(0);
   });
 
