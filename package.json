@@ -22,14 +22,18 @@
     "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts",
     "db:embed": "tsx --env-file-if-exists=.env scripts/embed-kb.ts",
     "calibrate": "tsx --env-file-if-exists=.env scripts/calibrate-retrieval.ts",
+    "eval": "tsx --env-file-if-exists=.env scripts/eval/run.ts",
+    "export:policies": "tsx --env-file-if-exists=.env scripts/export-policy-pdfs.ts",
     "db:seed": "tsx --env-file-if-exists=.env scripts/seed.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "@playwright/test": "^1.64.1",
+    "@types/pdfkit": "^0.17.7",
     "@types/pg": "^8.23.1",
     "eslint": "^9.39.0",
     "globals": "^16.0.0",
+    "pdfkit": "^0.20.2",
     "pg": "^8.23.1",
     "prettier": "^3.9.10",
     "supabase": "^2.122.0",
@@ -39,8 +43,8 @@
     "vitest": "^5.0.5"
   },
   "dependencies": {
+    "@cx/ai": "workspace:*",
     "@cx/shared": "workspace:*",
-    "@supabase/supabase-js": "^2.118.0",
-    "@cx/ai": "workspace:*"
+    "@supabase/supabase-js": "^2.118.0"
   }
 }

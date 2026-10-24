@@ -23,3 +23,4 @@ import type { LlmPort } from './llm/types.js';
 export function createLlm(config: AiConfig): LlmPort {
   return config.llmMode === 'mock' ? createMockLlm() : createOpenAiLlm(config);
 }
+export * from './eval/checks.js';

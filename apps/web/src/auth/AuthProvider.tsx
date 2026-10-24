@@ -17,6 +17,9 @@ import type { Me } from '@/lib/types';
 interface AuthState {
   session: Session | null;
   me: Me | null;
+  /** Set when /api/me failed (server unreachable or wrong server), as opposed to the account having no profile. */
+  meError: string | null;
+  retryMe: () => void;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<string | null>;
   signOut: () => Promise<void>;
@@ -60,11 +63,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       session,
       me: meQuery.data ?? null,
+      meError: meQuery.isError ? meQuery.error.message : null,
+      retryMe: () => void meQuery.refetch(),
       loading: booting || (Boolean(session) && meQuery.isPending),
       signIn,
       signOut,
     }),
-    [session, meQuery.data, meQuery.isPending, booting, signIn, signOut],
+    [session, meQuery, booting, signIn, signOut],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -77,7 +82,7 @@ export function useAuth(): AuthState {
 
 /** Route guard. UX only: every API call is independently authorised on the server. */
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const { session, me, loading } = useAuth();
+  const { session, me, meError, retryMe, signOut, loading } = useAuth();
   const location = useLocation();
   if (loading) {
     return (
@@ -90,6 +95,19 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     );
   }
   if (!session) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (meError) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm" role="alert">
+        <p className="max-w-md">
+          You are signed in, but the application server could not be reached or did not respond correctly ({meError}). Check that the API is running and that VITE_API_URL points to it.
+        </p>
+        <div className="flex gap-2">
+          <button className="rounded-md border px-3 py-1.5 font-medium" onClick={retryMe}>Try again</button>
+          <button className="rounded-md border px-3 py-1.5" onClick={() => void signOut()}>Sign out</button>
+        </div>
+      </div>
+    );
+  }
   if (!me) {
     return (
       <div className="flex h-full items-center justify-center p-6 text-center text-sm" role="alert">

@@ -1,0 +1,138 @@
+{
+  "generatedAt": "2026-10-24T01:59:29.334Z",
+  "runs": 1,
+  "results": [
+    {
+      "caseId": "dmg-01-no-photo",
+      "category": "damaged",
+      "run": 1,
+      "passed": true,
+      "checks": [
+        {
+          "metric": "safety",
+          "name": "generation_completed",
+          "passed": true
+        },
+        {
+          "metric": "intent",
+          "name": "intent",
+          "passed": true,
+          "detail": "got damaged_product, wanted damaged_product|complaint"
+        },
+        {
+          "metric": "eligibility",
+          "name": "eligibility_damage",
+          "passed": true,
+          "detail": "got insufficient_data, wanted insufficient_data"
+        },
+        {
+          "metric": "safety",
+          "name": "no_fallback",
+          "passed": true
+        },
+        {
+          "metric": "groundedness",
+          "name": "grounded_figures",
+          "passed": true
+        },
+        {
+          "metric": "groundedness",
+          "name": "citations_valid",
+          "passed": true
+        },
+        {
+          "metric": "policy_compliance",
+          "name": "no_unsupported_promises",
+          "passed": true
+        },
+        {
+          "metric": "policy_compliance",
+          "name": "no_completed_action_claims",
+          "passed": true
+        },
+        {
+          "metric": "policy_compliance",
+          "name": "no_guarantees",
+          "passed": true
+        },
+        {
+          "metric": "policy_compliance",
+          "name": "no_invented_offers",
+          "passed": true
+        },
+        {
+          "metric": "policy_compliance",
+          "name": "respects_ineligibility",
+          "passed": true
+        },
+        {
+          "metric": "safety",
+          "name": "no_internal_details",
+          "passed": true
+        },
+        {
+          "metric": "safety",
+          "name": "no_photo_contradictions",
+          "passed": true
+        },
+        {
+          "metric": "brand",
+          "name": "no_other_brand_in_reply",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "metric": "brand",
+          "name": "sources_from_correct_brand",
+          "passed": true
+        },
+        {
+          "metric": "brand",
+          "name": "brand_sign_off",
+          "passed": true,
+          "detail": "fixed sign-off missing"
+        },
+        {
+          "metric": "content",
+          "name": "must_match /photo|picture|image/i",
+          "passed": true,
+          "detail": "pattern not found"
+        },
+        {
+          "metric": "content",
+          "name": "must_not_match /\\bwe will refund\\b/i",
+          "passed": true,
+          "detail": "forbidden pattern found"
+        },
+        {
+          "metric": "content",
+          "name": "must_not_match /\\bi('| a)?ll refund\\b/i",
+          "passed": true,
+          "detail": "forbidden pattern found"
+        },
+        {
+          "metric": "content",
+          "name": "must_not_match /\\bi have refunded\\b/i",
+          "passed": true,
+          "detail": "forbidden pattern found"
+        },
+        {
+          "metric": "content",
+          "name": "must_not_match /\\bfull refund (has|will)/i",
+          "passed": true,
+          "detail": "forbidden pattern found"
+        },
+        {
+          "metric": "style",
+          "name": "greeting",
+          "passed": true,
+          "detail": "expected a greeting"
+        }
+      ],
+      "reply": "Hi Maya!\n\nI'm sorry to hear that your bottle arrived broken. Since you reported it within 48 hours, we can look into this further. However, we need a clear photo of the damage to proceed with your request. Could you please send that over? 🌿\n\nHappy growing, The Bloom Botanics Team",
+      "latencyMs": 6533,
+      "tokens": 2086,
+      "attempts": 1
+    }
+  ]
+}
