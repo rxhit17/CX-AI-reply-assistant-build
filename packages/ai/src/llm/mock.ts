@@ -365,5 +365,10 @@ export function createMockLlm(): LlmPort {
     async judge() {
       return wrap({ violations: [] });
     },
+
+    // The mock has no model: callers fall back to the deterministic pattern reader.
+    async extractPolicyFigures() {
+      return wrap(null);
+    },
   };
 }

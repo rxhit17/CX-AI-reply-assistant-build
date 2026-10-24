@@ -8,6 +8,7 @@ import {
   composeVars,
   IMAGE_SYSTEM,
   JUDGE_SYSTEM,
+  POLICY_EXTRACT_SYSTEM,
   understandPrompt,
   understandVars,
 } from './prompts.js';
@@ -15,8 +16,10 @@ import {
   composedReplySchema,
   imageEvidenceSchema,
   judgeSchema,
+  policyFiguresSchema,
   understandingSchema,
   type ComposeInput,
+  type ExtractPolicyInput,
   type JudgeInput,
   type LlmPort,
   type LlmResult,
@@ -106,6 +109,16 @@ export function createOpenAiLlm(config: AiConfig): LlmPort {
     async compose(input: ComposeInput) {
       const messages = await composePrompt.formatMessages(composeVars(input));
       return structured(chat, composedReplySchema, 'composed_reply', messages, config.chatModel);
+    },
+
+    async extractPolicyFigures({ category, title, content }: ExtractPolicyInput) {
+      const messages = [
+        new SystemMessage(POLICY_EXTRACT_SYSTEM),
+        new HumanMessage(
+          `category: ${category}\ntitle: ${title}\n\n<policy>\n${content}\n</policy>`,
+        ),
+      ];
+      return structured(judgeModel, policyFiguresSchema, 'policy_figures', messages, judgeName);
     },
 
     async judge({ reply, facts }: JudgeInput) {

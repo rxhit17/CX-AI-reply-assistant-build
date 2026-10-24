@@ -1,4 +1,4 @@
-import { deriveConditions, kbEmbeddingText } from '@cx/ai';
+import { createLlm, deriveConditions, kbEmbeddingText, type PolicyFigures } from '@cx/ai';
 import type { KbCategory, KbEntryInput, PolicyConditions } from '@cx/shared';
 import { assertAdmin, assertBrandAccess, type AuthUser } from '../auth.js';
 import type { Deps } from '../deps.js';
@@ -92,7 +92,16 @@ export async function embedEntry(
     return 'failed';
   }
   try {
-    const [vector] = await embeddings.embedDocuments([kbEmbeddingText(entry)]);
+    let vector: number[] | undefined;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        [vector] = await embeddings.embedDocuments([kbEmbeddingText(entry)]);
+        break;
+      } catch (err) {
+        if (attempt >= 3) throw err;
+        await new Promise((r) => setTimeout(r, 400 * attempt));
+      }
+    }
     if (!vector || vector.length !== embeddings.dimensions)
       throw new Error('Unexpected embedding size');
     // Guard with content_hash: if the entry was edited while we were embedding, keep it pending.
@@ -119,11 +128,45 @@ export async function embedEntry(
   }
 }
 
+const FIGURE_CATEGORIES: KbCategory[] = [
+  'return_policy',
+  'refund_policy',
+  'damaged_products',
+  'shipping_policy',
+  'cancellation_policy',
+];
+
+/**
+ * Reads the eligibility figures out of a policy's wording. The model understands any phrasing; its answer is verified
+ * against the text inside deriveConditions. If no model is available the pattern reader is used alone.
+ */
+async function readPolicyFigures(
+  deps: KbDeps,
+  category: KbCategory,
+  title: string,
+  content: string,
+): Promise<{ figures: PolicyFigures | null; warning?: string }> {
+  if (!FIGURE_CATEGORIES.includes(category)) return { figures: null };
+  try {
+    const llm = createLlm(deps.aiConfig);
+    const { value } = await llm.extractPolicyFigures({ category, title, content });
+    return { figures: value };
+  } catch {
+    return {
+      figures: null,
+      warning:
+        'The AI reader was unavailable, so the figures were read with simple pattern matching. Please double-check them.',
+    };
+  }
+}
+
 export async function createKbEntry(deps: KbDeps, user: AuthUser, input: KbEntryInput) {
   assertAdmin(user);
   assertBrandAccess(user, input.brand_id, 'Brand');
   // The figures that drive eligibility are read from the policy wording, so the text is the single source.
-  const sync = deriveConditions(input.category, input.content, input.conditions);
+  const read = await readPolicyFigures(deps, input.category, input.title, input.content);
+  const sync = deriveConditions(input.category, input.content, input.conditions, read.figures);
+  if (read.warning) sync.warnings.push(read.warning);
   const { data, error } = await deps.db
     .from('knowledge_base')
     .insert({ ...input, conditions: sync.conditions, created_by: user.id })
@@ -148,11 +191,17 @@ export async function updateKbEntry(
   // Re-read the figures whenever the wording or category changes (or conditions are supplied explicitly).
   let sync = { changes: [] as string[], warnings: [] as string[] };
   if ('content' in patch || 'category' in patch || 'conditions' in patch) {
+    const category = (patch.category as KbCategory | undefined) ?? current.category;
+    const title = (patch.title as string | undefined) ?? current.title;
+    const content = (patch.content as string | undefined) ?? current.content;
+    const read = await readPolicyFigures(deps, category, title, content);
     const derived = deriveConditions(
-      (patch.category as KbCategory | undefined) ?? current.category,
-      (patch.content as string | undefined) ?? current.content,
+      category,
+      content,
       'conditions' in patch ? (patch.conditions as PolicyConditions | null) : current.conditions,
+      read.figures,
     );
+    if (read.warning) derived.warnings.push(read.warning);
     patch = { ...patch, conditions: derived.conditions };
     sync = { changes: derived.changes, warnings: derived.warnings };
   }
@@ -187,7 +236,28 @@ export async function restoreKbEntry(deps: KbDeps, user: AuthUser, id: string) {
     .update({ archived_at: null, is_active: true })
     .eq('id', id);
   if (error) throw new Error(error.message);
+  await embedEntry(deps, await loadKbEntry(deps, user, id));
   return loadKbEntry(deps, user, id);
+}
+
+/**
+ * Safety net: embeds every live entry whose vector is missing or failed (for example the provider was down when it
+ * was saved). Run at start-up and periodically; failures are retried on the next pass.
+ */
+export async function embedPendingEntries(deps: KbDeps): Promise<number> {
+  if (!deps.embeddings) return 0;
+  const { data, error } = await deps.db
+    .from('knowledge_base')
+    .select(KB_COLUMNS)
+    .is('archived_at', null)
+    .in('embedding_status', ['pending', 'failed'])
+    .limit(50);
+  if (error) return 0;
+  let done = 0;
+  for (const row of (data ?? []) as unknown as KbRow[]) {
+    if ((await embedEntry(deps, row, true)) === 'embedded') done++;
+  }
+  return done;
 }
 
 export async function reembedKbEntry(deps: KbDeps, user: AuthUser, id: string, force: boolean) {

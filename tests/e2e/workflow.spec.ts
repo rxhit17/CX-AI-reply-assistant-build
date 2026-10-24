@@ -213,6 +213,23 @@ test.describe('AI reply lifecycle', () => {
     await expect(page.getByTestId('generate-reply')).toBeVisible();
   });
 
+  test('pencil: the agent writes what the reply should say and a draft is generated from it', async ({
+    page,
+  }) => {
+    await login(page, 'agent.bloom@demo.test');
+    await openConversation(page, 'Maya Patel');
+    await page.getByTestId('write-for-ai').click();
+    await expect(page.getByTestId('write-for-ai-submit')).toBeDisabled(); // nothing written yet
+    await page
+      .getByTestId('write-for-ai-input')
+      .fill('Apologise and ask for a clear photo of the bottle.');
+    await page.getByTestId('write-for-ai-submit').click();
+    await expect(page.getByTestId('draft-body')).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByTestId('draft-body')).not.toHaveValue('');
+    await page.getByTestId('discard-draft').click();
+    await expect(page.getByTestId('generate-reply')).toBeVisible();
+  });
+
   test('refund beyond the window is shown as ineligible and promises nothing', async ({ page }) => {
     await login(page, 'agent.bloom@demo.test');
     await openConversation(page, 'Liam Chen');

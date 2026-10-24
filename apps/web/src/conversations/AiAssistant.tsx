@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   BookOpen,
   CheckCircle2,
+  Pencil,
   RefreshCw,
   Send,
   ShieldAlert,
@@ -13,7 +14,14 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/form';
-import { Badge, Card, ErrorState, Skeleton } from '@/components/ui/primitives';
+import {
+  Badge,
+  Card,
+  Dialog,
+  DialogContent,
+  ErrorState,
+  Skeleton,
+} from '@/components/ui/primitives';
 import { useDraft } from '@/hooks';
 import { api, ApiError, errorMessage } from '@/lib/api';
 import { titleCase } from '@/lib/format';
@@ -96,6 +104,7 @@ export function AiAssistant({
   const draftQuery = useDraft(conversationId);
   const draft = draftQuery.data?.draft ?? null;
   const [instruction, setInstruction] = useState('');
+  const [writeOpen, setWriteOpen] = useState(false);
   const sendKey = useRef<{ id: string; key: string } | null>(null);
 
   // The editor shows the server copy unless the agent has typed a local edit for this exact draft.
@@ -126,7 +135,10 @@ export function AiAssistant({
               extra_instruction: instruction.trim() || undefined,
             },
           })
-        : api.post<DraftResponse>('/api/ai/generate', { conversation_id: conversationId }),
+        : api.post<DraftResponse>('/api/ai/generate', {
+            conversation_id: conversationId,
+            options: instruction.trim() ? { extra_instruction: instruction.trim() } : undefined,
+          }),
     onSuccess: (res) => {
       apply(res);
       setInstruction('');
@@ -212,6 +224,17 @@ export function AiAssistant({
       <div className="flex items-center justify-between">
         <h3 className="flex items-center gap-1.5 text-sm font-semibold">
           <Sparkles className="h-4 w-4 text-primary" aria-hidden /> AI assistant
+          <button
+            type="button"
+            className="ml-0.5 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+            title="Write what the reply should say"
+            aria-label="Write what the reply should say"
+            disabled={!hasCustomerMessage || busy}
+            onClick={() => setWriteOpen(true)}
+            data-testid="write-for-ai"
+          >
+            <Pencil className="h-3.5 w-3.5" aria-hidden />
+          </button>
         </h3>
         {draft && (
           <Badge
@@ -382,6 +405,43 @@ export function AiAssistant({
           <Evidence draft={draft} sources={sources} warnings={warnings} passed={passed} />
         </div>
       )}
+      <Dialog open={writeOpen} onOpenChange={setWriteOpen}>
+        <DialogContent
+          title="Tell the assistant what to write"
+          description="Write what the reply should say or focus on. The assistant turns it into a complete message for this customer and this order."
+          className="max-w-lg"
+        >
+          <Textarea
+            aria-label="What the reply should say"
+            placeholder="e.g. Apologise for the leak, say we have received the photos, and ask for a clearer photo of the planter."
+            value={instruction}
+            onChange={(e) => setInstruction(e.target.value)}
+            maxLength={500}
+            autoGrow
+            className="max-h-60 min-h-[110px] resize-none text-sm"
+            data-testid="write-for-ai-input"
+          />
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {instruction.length}/500 · Policy rules still apply: the assistant will not promise
+            refunds, replacements or anything the policy does not allow.
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setWriteOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!instruction.trim() || busy}
+              onClick={() => {
+                setWriteOpen(false);
+                generate.mutate(draft?.id);
+              }}
+              data-testid="write-for-ai-submit"
+            >
+              <Sparkles className="h-4 w-4" aria-hidden /> Generate message
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

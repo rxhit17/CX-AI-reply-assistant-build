@@ -282,3 +282,105 @@ describe('hybrid retrieval with real embeddings', () => {
     }
   });
 });
+
+describe('embedding replacement: the old vector never outlives its wording', () => {
+  const vectorOf = async (id: string) => {
+    const { data } = await db
+      .from('knowledge_base')
+      .select('embedding, embedded_hash, content_hash, embedding_status')
+      .eq('id', id)
+      .single();
+    return data as {
+      embedding: string | null;
+      embedded_hash: string | null;
+      content_hash: string;
+      embedding_status: string;
+    };
+  };
+  let id: string;
+  let firstVector: string;
+
+  it('a new entry is embedded', async () => {
+    const res = await api(
+      app,
+      admin,
+      'POST',
+      '/api/knowledge-base',
+      validEntry({ title: 'Lifecycle probe' }),
+    );
+    id = res.json().entry.id;
+    created.push(id);
+    const v = await vectorOf(id);
+    expect(v.embedding).not.toBeNull();
+    expect(v.embedded_hash).toBe(v.content_hash);
+    firstVector = v.embedding!;
+  });
+
+  it('editing the wording removes the OLD vector immediately, even when the new one cannot be created yet', async () => {
+    const res = await api(failApp, admin, 'PATCH', `/api/knowledge-base/${id}`, {
+      content:
+        'Bloom Botanics now offers recycled gift boxes and ribbon at checkout, free of charge.',
+    });
+    expect(res.statusCode).toBe(200);
+    const v = await vectorOf(id);
+    expect(v.embedding).toBeNull(); // old vector gone: it can no longer match questions about the old text
+    expect(v.embedding_status).toBe('failed');
+  });
+
+  it('the new vector is created from the new wording and differs from the old one', async () => {
+    const res = await api(app, admin, 'POST', `/api/knowledge-base/${id}/reembed`, {});
+    expect(res.json().outcome).toBe('embedded');
+    const v = await vectorOf(id);
+    expect(v.embedding).not.toBeNull();
+    expect(v.embedding).not.toBe(firstVector);
+    expect(v.embedded_hash).toBe(v.content_hash);
+  });
+
+  it('deleting (archiving) removes the vector and restoring creates a fresh one', async () => {
+    expect((await api(app, admin, 'DELETE', `/api/knowledge-base/${id}`)).statusCode).toBe(204);
+    expect((await vectorOf(id)).embedding).toBeNull();
+    const back = await api(app, admin, 'POST', `/api/knowledge-base/${id}/restore`);
+    expect(back.json().entry.embedding_status).toBe('ready');
+    expect((await vectorOf(id)).embedding).not.toBeNull();
+  });
+});
+
+describe.skipIf(env.LLM_MODE === 'mock')(
+  'eligibility figures follow the policy wording (real model)',
+  () => {
+    let id: string;
+    it('reads an unusual phrasing on create', async () => {
+      const res = await api(
+        app,
+        admin,
+        'POST',
+        '/api/knowledge-base',
+        validEntry({
+          title: 'Figures probe refund policy',
+          category: 'refund_policy',
+          is_active: false, // never disturbs the live refund policy
+          content:
+            'Customers have a fortnight from the day their parcel arrives to ask for their money back. Requests after that are looked at one by one.',
+        }),
+      );
+      expect(res.statusCode).toBe(201);
+      id = res.json().entry.id;
+      created.push(id);
+      expect(res.json().entry.conditions).toMatchObject({
+        window_days: 14,
+        window_anchor: 'delivery',
+        discretionary_review: true,
+      });
+    });
+
+    it('follows an edit to different wording and reports the change', async () => {
+      const res = await api(app, admin, 'PATCH', `/api/knowledge-base/${id}`, {
+        content:
+          'Customers have three weeks from the day their parcel arrives to ask for their money back. We do not make exceptions after that.',
+      });
+      expect(res.json().entry.conditions.window_days).toBe(21);
+      expect(res.json().entry.conditions.discretionary_review).toBeUndefined();
+      expect(res.json().conditions_sync.changes.join(' ')).toMatch(/14 days → 21 days/);
+    });
+  },
+);

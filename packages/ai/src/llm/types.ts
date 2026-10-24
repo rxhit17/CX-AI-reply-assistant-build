@@ -119,6 +119,70 @@ export const judgeSchema = z.object({
 });
 export type JudgeResult = z.infer<typeof judgeSchema>;
 
+/** Figures a model reads out of a policy's wording. Each number comes with the exact words that state it. */
+export const policyFiguresSchema = z.object({
+  window_days: z
+    .number()
+    .int()
+    .nullable()
+    .describe('Return/refund window in days (return and refund policies only), else null'),
+  window_anchor: z
+    .enum(['delivery', 'order'])
+    .nullable()
+    .describe('Whether that window is counted from delivery or from the order date, else null'),
+  window_quote: z.string().nullable().describe('EXACT words from the policy that state the window'),
+  report_within: z
+    .number()
+    .int()
+    .nullable()
+    .describe('Time limit to report damage (damaged-goods policies only), else null'),
+  report_unit: z.enum(['hours', 'days']).nullable().describe('Unit of report_within'),
+  report_quote: z.string().nullable().describe('EXACT words that state the damage report limit'),
+  free_shipping_threshold: z
+    .number()
+    .nullable()
+    .describe('Order value above which shipping is free (shipping policies only), else null'),
+  threshold_quote: z
+    .string()
+    .nullable()
+    .describe('EXACT words that state the free shipping threshold'),
+  delivery_days_min: z
+    .number()
+    .int()
+    .nullable()
+    .describe('Typical delivery time, minimum business days'),
+  delivery_days_max: z
+    .number()
+    .int()
+    .nullable()
+    .describe('Typical delivery time, maximum business days'),
+  delivery_quote: z.string().nullable().describe('EXACT words that state the delivery time'),
+  cancellable_until: z
+    .enum(['processing', 'shipped'])
+    .nullable()
+    .describe(
+      'Last order status in which cancelling is still allowed (cancellation policies only): "processing" = only before shipping, "shipped" = also after dispatch until the carrier scans it',
+    ),
+  cancel_quote: z.string().nullable().describe('EXACT words that state the cancellation cut-off'),
+  requires_photo: z
+    .boolean()
+    .describe(
+      'True only if the policy requires the customer to provide photo evidence of the problem',
+    ),
+  discretionary_review: z
+    .boolean()
+    .describe(
+      'True only if the policy says exceptions or late requests may still be reviewed individually (never guaranteed)',
+    ),
+});
+export type PolicyFigures = z.infer<typeof policyFiguresSchema>;
+
+export interface ExtractPolicyInput {
+  category: string;
+  title: string;
+  content: string;
+}
+
 export interface Usage {
   input: number;
   output: number;
@@ -202,4 +266,6 @@ export interface LlmPort {
   }): Promise<LlmResult<ImageEvidence>>;
   compose(input: ComposeInput): Promise<LlmResult<ComposedReply>>;
   judge(input: JudgeInput): Promise<LlmResult<JudgeResult>>;
+  /** Reads the eligibility figures out of a policy. `null` when this implementation cannot (the mock). */
+  extractPolicyFigures(input: ExtractPolicyInput): Promise<LlmResult<PolicyFigures | null>>;
 }

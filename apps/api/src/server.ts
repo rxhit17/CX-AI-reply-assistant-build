@@ -3,6 +3,7 @@ import { createEmbeddingService } from '@cx/ai';
 import { toAiConfig } from './ai-config.js';
 import { buildApp } from './app.js';
 import { loadEnv } from './env.js';
+import { embedPendingEntries } from './services/kb.js';
 
 const env = loadEnv();
 
@@ -40,6 +41,14 @@ try {
   app.log.error(err);
   process.exit(1);
 }
+
+// Embed anything left pending/failed (provider outage, crash mid-save), now and every 10 minutes.
+const sweep = () =>
+  void embedPendingEntries({ db: admin, embeddings, aiConfig }).catch((err) =>
+    app.log.warn({ err }, 'embedding sweep failed'),
+  );
+sweep();
+setInterval(sweep, 10 * 60_000).unref();
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
