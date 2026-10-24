@@ -76,6 +76,8 @@ export const GenerationState = Annotation.Root({
   previousCaseState: withDefault<PersistedCaseState | null>(null),
   caseState: withDefault<CaseState | null>(null),
   asksNextStep: withDefault<boolean>(false),
+  /** The latest message asks something outside the open case (answered directly, not folded into the case). */
+  sideQuestion: withDefault<boolean>(false),
   asksClarification: withDefault<boolean>(false),
   customerRepeated: withDefault<boolean>(false),
   /** An agent already gave the next step / handoff for the open case (derived from the message history). */

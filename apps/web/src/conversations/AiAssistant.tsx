@@ -28,14 +28,61 @@ const OUTCOME_TONE = {
 } as const;
 const STATUS_TONE = { draft: 'blue', edited: 'amber', approved: 'green' } as const;
 
-function useElapsed(active: boolean) {
-  const [s, setS] = useState(0);
+const THINKING_STEPS = [
+  'Reasoning about the customer’s request',
+  'Retrieving the verified order details',
+  'Searching this brand’s policies',
+  'Checking eligibility',
+  'Creating the message',
+  'Running safety checks',
+] as const;
+
+/** Animated "AI thinking" progress: the steps advance on a timer and the last one keeps pulsing until the draft arrives. */
+function ThinkingCard() {
+  const [step, setStep] = useState(0);
   useEffect(() => {
-    if (!active) return setS(0);
-    const t = setInterval(() => setS((n) => n + 1), 1000);
+    const t = setInterval(() => setStep((n) => Math.min(n + 1, THINKING_STEPS.length - 1)), 2200);
     return () => clearInterval(t);
-  }, [active]);
-  return s;
+  }, []);
+  return (
+    <Card className="space-y-3 p-3" role="status" data-testid="generating">
+      <p className="flex items-center gap-2 text-sm font-medium">
+        <Sparkles className="h-4 w-4 animate-pulse text-primary" aria-hidden /> AI thinking
+        <span className="inline-flex gap-0.5" aria-hidden>
+          {[0, 150, 300].map((d) => (
+            <span
+              key={d}
+              className="h-1 w-1 animate-bounce rounded-full bg-primary"
+              style={{ animationDelay: `${d}ms` }}
+            />
+          ))}
+        </span>
+      </p>
+      <ul className="space-y-1.5 text-xs">
+        {THINKING_STEPS.slice(0, step + 1).map((label, i) => {
+          const active = i === step;
+          return (
+            <li
+              key={label}
+              className={`flex step-in items-center gap-2 ${
+                active ? 'text-foreground' : 'text-muted-foreground'
+              }`}
+            >
+              {active ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" aria-hidden />
+              ) : (
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
+              )}
+              <span className={active ? 'animate-pulse' : ''}>
+                {label}
+                {active ? '…' : ''}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
+  );
 }
 
 export function AiAssistant({
@@ -140,7 +187,6 @@ export function AiAssistant({
     onError: fail,
   });
 
-  const elapsed = useElapsed(generate.isPending);
   const busy =
     generate.isPending ||
     edit.isPending ||
@@ -177,18 +223,7 @@ export function AiAssistant({
         )}
       </div>
 
-      {generate.isPending && (
-        <Card className="space-y-2 p-3" role="status" data-testid="generating">
-          <p className="flex items-center gap-2 text-sm">
-            <RefreshCw className="h-4 w-4 animate-spin text-primary" aria-hidden /> Drafting a
-            reply… {elapsed}s
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Reading the conversation and verified order facts, searching this brand's policies,
-            checking eligibility, writing the draft and running safety checks. Usually 5–10 seconds.
-          </p>
-        </Card>
-      )}
+      {generate.isPending && <ThinkingCard />}
 
       {!draft && !generate.isPending && (
         <Card className="space-y-2 p-3">

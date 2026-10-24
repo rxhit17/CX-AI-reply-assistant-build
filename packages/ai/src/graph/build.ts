@@ -179,6 +179,7 @@ export function buildGenerationGraph(deps: GraphDeps) {
       replyLanguage: pickReplyLanguage(customerLanguage, ctx.brand.voice.supported_languages),
       injectionSuspected: u.injection_suspected || looksLikePromptInjection(latest.body),
       asksNextStep: u.case_update.asks_next_step,
+      sideQuestion: u.side_question && (u.intent === 'general_question' || u.intent === 'unclear'),
       asksClarification: u.case_update.asks_clarification,
       ...usageOf(result),
     };
@@ -241,6 +242,7 @@ export function buildGenerationGraph(deps: GraphDeps) {
       orderLinked: s.orderFacts !== null,
       nextStepAlreadyGiven: s.nextStepAlreadyGiven,
       customerRepeated: s.customerRepeated,
+      sideQuestion: s.sideQuestion,
     });
     return {
       effectiveIntent: d.effectiveIntent,
@@ -360,7 +362,7 @@ export function buildGenerationGraph(deps: GraphDeps) {
     }
 
     const policyRelevant = s.route === 'policy' || s.route === 'image';
-    const insufficient = policyRelevant && sources.length === 0;
+    const insufficient = policyRelevant && sources.length === 0 && !s.sideQuestion;
     const finalized = finalizeNextAction(
       {
         effectiveIntent: intent,
@@ -394,9 +396,11 @@ export function buildGenerationGraph(deps: GraphDeps) {
       sources,
       composeMode: (insufficient
         ? 'insufficient'
-        : s.route === 'order'
-          ? 'order'
-          : 'policy') as ComposeMode,
+        : s.sideQuestion
+          ? 'side_question'
+          : s.route === 'order'
+            ? 'order'
+            : 'policy') as ComposeMode,
       escalate: s.escalate || reasons.length > 0,
       escalationReason: reasons.length ? reasons.join('; ') : s.escalationReason,
     };
@@ -410,6 +414,26 @@ export function buildGenerationGraph(deps: GraphDeps) {
     const earlier = ctx.messages.filter((m) => m.id !== latest.id);
     const derived = deriveFor(s, mode);
     const caseState = s.caseState!;
+    const lastAgentIdx = ctx.messages.map((m) => m.sender_type).lastIndexOf('agent');
+    const unansweredMessages = ctx.messages
+      .slice(lastAgentIdx + 1)
+      .filter((m) => m.sender_type === 'customer' && m.id !== latest.id && m.body.trim())
+      .map((m) => m.body.trim());
+    // A side question is answered on its own; what the open case still needs is mentioned once, briefly.
+    let openCaseNote: string | null = null;
+    if (s.sideQuestion) {
+      const pending = decide({
+        intent: s.understanding!.intent,
+        asksForHuman: false,
+        asksNextStep: s.asksNextStep,
+        state: caseState,
+        customerSentImage: s.customerSentImage,
+        orderLinked: s.orderFacts !== null,
+        nextStepAlreadyGiven: s.nextStepAlreadyGiven,
+      });
+      if (pending.missingInformation.length > 0)
+        openCaseNote = `the open case is still waiting on: ${pending.missingInformation.join(', ')}`;
+    }
     const result = await llm.compose({
       mode,
       nextAction: derived.next_action,
@@ -431,6 +455,9 @@ export function buildGenerationGraph(deps: GraphDeps) {
       customerFirstName: firstName(ctx.customer.name),
       history: toHistory(earlier).slice(-HISTORY_WINDOW),
       latestCustomerMessage: latest.body,
+      unansweredMessages,
+      sideQuestion: s.sideQuestion,
+      openCaseNote,
       customerSentImage: s.customerSentImage,
       imageEvidence: s.imageEvidence,
       imageAnalysisFailed: s.imageAnalysisFailed,
@@ -588,7 +615,7 @@ export function buildGenerationGraph(deps: GraphDeps) {
     const citedIds = composed.cited_source_ids.map(
       (l) => labelToId.get(l.trim().toUpperCase()) ?? `unknown:${l}`,
     );
-    const policyRelevant = s.route === 'policy' || s.route === 'image';
+    const policyRelevant = (s.route === 'policy' || s.route === 'image') && !s.sideQuestion;
     const results: GuardrailResult[] = [
       {
         check: 'structured_output',

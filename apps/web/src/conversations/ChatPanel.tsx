@@ -202,6 +202,7 @@ export function ChatPanel({ conversationId }: { conversationId: string }) {
               key={m.id}
               message={m}
               customerName={customer.name}
+              viewAs={mode}
               agentName={m.sender_id === me?.id ? 'You' : undefined}
             />
           ))

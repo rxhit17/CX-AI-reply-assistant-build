@@ -68,6 +68,27 @@ describe('routing', () => {
     );
   });
 
+  it('a new question in the middle of an open case is answered directly, then the case is resumed once', async () => {
+    const h = makeHarness({
+      messages: [
+        msg('m1', 'customer', 'My order was delivered but the bottle is broken. What can I do?'),
+        msg('a1', 'agent', 'I am sorry to hear that. Could you send a photo of the damage?'),
+        msg('m2', 'customer', 'what is your ai model name'),
+      ],
+      searchResults: [damagedHit],
+    });
+    const { state } = await runGeneration(h.deps, h.input);
+    expect(state.sideQuestion).toBe(true);
+    expect(state.understanding?.intent).toBe('general_question');
+    expect(state.composeMode).toBe('side_question');
+    expect(state.escalate).toBe(false);
+    const body = h.saved[0]!.body;
+    expect(body).toMatch(/AI-assisted support assistant/i);
+    expect(body).not.toMatch(/gpt|openai|claude/i);
+    expect(body).toMatch(/photo/i); // the open case is mentioned once, briefly
+    expect(h.saved[0]!.guardrails.some((g) => !g.passed && g.severity === 'blocking')).toBe(false);
+  });
+
   it('follow-up with a photo takes the image path and does NOT ask for the photo again', async () => {
     const h = makeHarness({
       messages: [

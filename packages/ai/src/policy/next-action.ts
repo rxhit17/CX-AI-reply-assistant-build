@@ -119,6 +119,8 @@ export interface DecisionInput {
   nextStepAlreadyGiven?: boolean;
   /** The latest customer message repeats an earlier customer message (same words). */
   customerRepeated?: boolean;
+  /** The latest message asks something outside the open case: it is answered on its own, not folded into the case. */
+  sideQuestion?: boolean;
 }
 
 export interface Decision {
@@ -141,7 +143,13 @@ const ACTIONABLE: Resolution[] = [
 ];
 
 export function decideNextAction(i: DecisionInput): Decision {
-  const intent = effectiveIntent(i.intent, i.state, i.asksNextStep || i.state.resolution_confirmed);
+  const side =
+    Boolean(i.sideQuestion) &&
+    !i.asksForHuman &&
+    ['unclear', 'general_question'].includes(i.intent);
+  const intent: Intent = side
+    ? 'general_question'
+    : effectiveIntent(i.intent, i.state, i.asksNextStep || i.state.resolution_confirmed);
   const route = routeFor({
     intent,
     asksForHuman: i.asksForHuman,
@@ -162,10 +170,11 @@ export function decideNextAction(i: DecisionInput): Decision {
   ) {
     missing.push('photo');
   }
-  const ambiguous = isAmbiguousMismatch(i.state) && policyRoute;
+  const ambiguous = !side && isAmbiguousMismatch(i.state) && policyRoute;
   if (ambiguous) missing.push('issue_cause');
 
   const wantsAction =
+    !side &&
     ACTIONABLE.includes(i.state.desired_resolution) &&
     (i.state.resolution_confirmed || i.asksNextStep);
   let nextAction: NextAction;

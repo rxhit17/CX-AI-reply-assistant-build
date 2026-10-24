@@ -55,7 +55,11 @@ export function detectLanguage(text: string): string {
   return 'en';
 }
 
+const SIDE_QUESTION =
+  /\b(ai model|model name|your name|who are you|what are you|are you (a |an )?(bot|human|robot|real|ai))\b/i;
+
 const RULES: [RegExp, Intent][] = [
+  [SIDE_QUESTION, 'general_question'],
   [/\b(human|real person|agent|manager|speak to (a|someone))\b/i, 'human_agent_request'],
   [
     /\b(broken|cracked|damaged|smashed|shattered|crack|arrived with)\b|toot gaya|toota|tut gaya/i,
@@ -203,6 +207,7 @@ export function createMockLlm(): LlmPort {
         refers_to_attachment: input.latestHasImage || /here it is|attached|photo/i.test(text),
         asks_for_human: intent === 'human_agent_request',
         case_update: extractCase(input.history, text),
+        side_question: SIDE_QUESTION.test(text),
         injection_suspected: /ignore (all )?(previous|prior)|system prompt|developer mode/i.test(
           text,
         ),
@@ -230,7 +235,16 @@ export function createMockLlm(): LlmPort {
       const e = input.eligibility;
       const known = new Set(input.avoidAsking);
 
-      if (input.mode === 'small_talk') lines.push('Happy to help. What can I do for you today?');
+      if (input.mode === 'side_question') {
+        lines.push(
+          `I am the AI-assisted support assistant for ${input.brand.name}, and a team member reviews my replies. I cannot share technical details about how I work, but I am happy to keep helping you.`,
+        );
+        if (input.openCaseNote)
+          lines.push(
+            'Whenever you can, please send the photo so we can continue with your request.',
+          );
+      } else if (input.mode === 'small_talk')
+        lines.push('Happy to help. What can I do for you today?');
       else if (input.mode === 'escalation')
         lines.push('I will pass this to a member of our team who will take over from here.');
       else if (input.mode === 'clarify') {

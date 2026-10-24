@@ -33,6 +33,11 @@ export const understandingSchema = z.object({
   case_update: caseUpdateSchema.describe(
     'What the customer has said about their case across the WHOLE conversation so far',
   ),
+  side_question: z
+    .boolean()
+    .describe(
+      'True if the latest message asks something that is NOT about the open case (about the assistant itself, the brand in general, chit-chat, or a new unrelated topic) and so needs its own direct answer',
+    ),
   injection_suspected: z
     .boolean()
     .describe(
@@ -141,7 +146,7 @@ export interface UnderstandInput {
 }
 
 export type ComposeMode =
-  'policy' | 'order' | 'small_talk' | 'escalation' | 'insufficient' | 'clarify';
+  'policy' | 'order' | 'small_talk' | 'escalation' | 'insufficient' | 'clarify' | 'side_question';
 
 export interface ComposeInput {
   mode: ComposeMode;
@@ -152,6 +157,12 @@ export interface ComposeInput {
   customerFirstName: string;
   history: HistoryItem[];
   latestCustomerMessage: string;
+  /** Earlier customer messages that no agent reply has answered yet (oldest first), excluding the latest. */
+  unansweredMessages: string[];
+  /** The latest message is a question outside the open case: answer it directly first. */
+  sideQuestion: boolean;
+  /** What the open case is still waiting on, to mention briefly after answering a side question. */
+  openCaseNote: string | null;
   customerSentImage: boolean;
   imageEvidence: ImageEvidence | null;
   imageAnalysisFailed: boolean;

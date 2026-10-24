@@ -9,23 +9,27 @@ export function MessageBubble({
   message,
   customerName,
   agentName,
+  viewAs = 'agent',
 }: {
   message: MessageRow;
   customerName: string;
   agentName?: string;
+  /** Whose side of the conversation is being viewed: that side's own messages sit on the right. */
+  viewAs?: 'agent' | 'customer';
 }) {
   const [zoom, setZoom] = useState<string | null>(null);
   const fromCustomer = message.sender_type === 'customer';
+  const mine = viewAs === 'customer' ? fromCustomer : !fromCustomer;
   const isAi = Boolean(message.ai_generation_id);
   const images = message.attachments ?? [];
 
   return (
     <div
-      className={cn('flex', fromCustomer ? 'justify-start' : 'justify-end')}
+      className={cn('flex', mine ? 'justify-end' : 'justify-start')}
       data-testid={`message-${message.sender_type}`}
     >
       <div className={cn('max-w-[78%] space-y-1')}>
-        <p className={cn('px-1 text-[11px] text-muted-foreground', !fromCustomer && 'text-right')}>
+        <p className={cn('px-1 text-[11px] text-muted-foreground', mine && 'text-right')}>
           {fromCustomer ? customerName : (agentName ?? 'Agent')}
           {isAi && (
             <span
@@ -39,9 +43,9 @@ export function MessageBubble({
         <div
           className={cn(
             'rounded-2xl px-3.5 py-2 text-sm shadow-sm',
-            fromCustomer
-              ? 'rounded-tl-sm bg-white ring-1 ring-slate-200'
-              : 'rounded-tr-sm bg-primary text-primary-foreground',
+            mine
+              ? 'rounded-tr-sm bg-primary text-primary-foreground'
+              : 'rounded-tl-sm bg-white ring-1 ring-slate-200',
           )}
         >
           {images.length > 0 && (
@@ -74,11 +78,12 @@ export function MessageBubble({
         <p
           className={cn(
             'flex items-center gap-1 px-1 text-[11px] text-muted-foreground',
-            !fromCustomer && 'justify-end',
+            mine && 'justify-end',
           )}
         >
           <time dateTime={message.created_at}>{formatTime(message.created_at)}</time>
           {!fromCustomer &&
+            viewAs === 'agent' &&
             (message.read_at ? (
               <span className="inline-flex items-center gap-0.5 text-sky-600" title="Read">
                 <CheckCheck className="h-3.5 w-3.5" aria-hidden /> Read
