@@ -72,7 +72,13 @@ export interface OrderRow {
 }
 
 export interface ConversationDetail {
-  conversation: { id: string; brand_id: string; customer_id: string; order_id: string | null; status: 'open' | 'closed' };
+  conversation: {
+    id: string;
+    brand_id: string;
+    customer_id: string;
+    order_id: string | null;
+    status: 'open' | 'closed';
+  };
   customer: { id: string; name: string; email: string; preferred_language: string | null };
   brand: { id: string; name: string; slug: string };
   messages: MessageRow[];
@@ -82,7 +88,8 @@ export interface DraftRow {
   id: string;
   brand_id: string;
   conversation_id: string;
-  status: 'draft' | 'edited' | 'approved' | 'sent' | 'discarded' | 'superseded' | 'withheld' | 'failed';
+  status:
+    'draft' | 'edited' | 'approved' | 'sent' | 'discarded' | 'superseded' | 'withheld' | 'failed';
   intent: string | null;
   language: string | null;
   original_body: string;
@@ -90,7 +97,13 @@ export interface DraftRow {
   escalate: boolean;
   guardrails: GuardrailResult[];
   eligibility: Eligibility[];
-  image_evidence: { usable: boolean; subject: string; visible_damage: string; description: string; confidence: string } | null;
+  image_evidence: {
+    usable: boolean;
+    subject: string;
+    visible_damage: string;
+    description: string;
+    confidence: string;
+  } | null;
   model: string | null;
   latency_ms: number | null;
   prompt_tokens: number | null;
@@ -129,13 +142,26 @@ export interface CustomerRow {
 export type KbRow = KbEntry & { embedded_hash: string | null; embedding_model: string | null };
 
 export interface RetrievalPreview {
-  entries: { id: string; title: string; category: string; version: number; vector_score: number | null; text_score: number | null; fused_score: number }[];
+  entries: {
+    id: string;
+    title: string;
+    category: string;
+    version: number;
+    vector_score: number | null;
+    text_score: number | null;
+    fused_score: number;
+  }[];
   relevant: { id: string }[];
   sufficient: boolean;
   mode: 'hybrid' | 'keyword';
   reason: string;
   embeddingError?: string;
-  thresholds: { minVectorSimilarity: number; relativeMargin: number; minFusedScore: number; topK: number };
+  thresholds: {
+    minVectorSimilarity: number;
+    relativeMargin: number;
+    minFusedScore: number;
+    topK: number;
+  };
 }
 
 export interface LogRow {

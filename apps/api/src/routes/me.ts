@@ -4,7 +4,11 @@ import type { Deps } from '../deps.js';
 
 export async function meRoutes(app: FastifyInstance, { db }: Deps) {
   app.get('/me', async (req) => {
-    const { data: profile } = await db.from('profiles').select('full_name').eq('id', req.user.id).single();
+    const { data: profile } = await db
+      .from('profiles')
+      .select('full_name')
+      .eq('id', req.user.id)
+      .single();
     return {
       user: {
         id: req.user.id,

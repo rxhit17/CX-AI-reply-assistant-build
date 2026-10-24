@@ -25,13 +25,19 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
         const row = (payload.new ?? payload.old) as { conversation_id?: string };
         void queryClient.invalidateQueries({ queryKey: ['conversations'] });
-        if (row.conversation_id) void queryClient.invalidateQueries({ queryKey: ['conversation', row.conversation_id] });
+        if (row.conversation_id)
+          void queryClient.invalidateQueries({ queryKey: ['conversation', row.conversation_id] });
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'ai_generations' }, (payload) => {
-        const row = (payload.new ?? payload.old) as { conversation_id?: string };
-        if (row.conversation_id) void queryClient.invalidateQueries({ queryKey: ['draft', row.conversation_id] });
-        void queryClient.invalidateQueries({ queryKey: ['logs'] });
-      })
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'ai_generations' },
+        (payload) => {
+          const row = (payload.new ?? payload.old) as { conversation_id?: string };
+          if (row.conversation_id)
+            void queryClient.invalidateQueries({ queryKey: ['draft', row.conversation_id] });
+          void queryClient.invalidateQueries({ queryKey: ['logs'] });
+        },
+      )
       .subscribe((s) => {
         if (s === 'SUBSCRIBED') setStatus('live');
         else if (s === 'CLOSED' || s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') setStatus('offline');

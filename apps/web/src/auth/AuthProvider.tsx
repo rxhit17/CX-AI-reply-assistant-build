@@ -1,6 +1,14 @@
 import type { Session } from '@supabase/supabase-js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
@@ -73,7 +81,10 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground" role="status">
+      <div
+        className="flex h-full items-center justify-center text-sm text-muted-foreground"
+        role="status"
+      >
         Loading…
       </div>
     );

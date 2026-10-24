@@ -46,10 +46,11 @@ _Last updated: 2026-10-23_
 - Bug found by tests and fixed: relevant entries were ordered by fused rank, letting keyword matches outrank the best semantic match, and topK was applied before relevance filtering.
 
 ## Phase 5–7 – LangGraph workflow, tools, guardrails, draft API ✅ (UI not started)
+
 - **LangGraph** StateGraph (packages/ai/src/graph): typed Annotation state, conditional routing (small talk / order / policy / image / human / unsupported), bounded retry (initial + 1 corrective attempt) then safe fallback, failure persistence (`failed` generation, no draft body), per-process MemorySaver. The graph ends at saveDraft; approval/sending are separate durable DB operations.
 - **Deliberate deviation:** intent, language and the standalone search query come from ONE model call in `understandIntent`; `rewriteQuery` is a deterministic step that uses it (saves a call).
 - **LangChain**: ChatOpenAI + withStructuredOutput(Zod), ChatPromptTemplate, OpenAIEmbeddings, tool() registry (9 tools; scope-bound to one conversation, no ids in tool inputs, none can modify orders/refunds).
-- **Deterministic rules** (no LLM): return/refund windows (inclusive, brand-specific), damage windows in hours + photo requirement, free-shipping threshold (strictly above), cancellation by order state, delivery estimates in business days. 
+- **Deterministic rules** (no LLM): return/refund windows (inclusive, brand-specific), damage windows in hours + photo requirement, free-shipping threshold (strictly above), cancellation by order state, delivery estimates in business days.
 - **Guardrails** (code): citations exist, grounded figures (days/$ must appear in sources/facts), order number matches, no completed-action claims, no refund/replacement promises unless eligibility supports, no guarantees/invented offers, no other-brand names, no UUIDs/system details, no false/redundant photo statements, no internal source labels, repeated-greeting + language warnings. Model-based check only for non-English drafts, and its findings must quote the reply verbatim.
 - **API**: POST /api/ai/generate|regenerate, GET /api/conversations/:id/draft, GET|PATCH /api/ai/drafts/:id, approve, send (idempotent), discard, GET /api/ai/logs(+/:id). Per-agent and per-conversation rate limits, one in-flight generation per conversation, request timeout via AbortSignal. Stale-policy detection (409 STALE_POLICY).
 - **Tests**: AI package 130 unit tests (rules, intent, guardrails, retrieval, graph incl. retry/fallback/failure); API 28 unit tests; **64 integration tests pass** (DB 24, API 13, KB 12, AI lifecycle 15) against the real project.
@@ -59,5 +60,6 @@ _Last updated: 2026-10-23_
 ## Next: frontend (Phase 3 UI, KB UI, Logs UI, Settings), then evaluation suite, Playwright e2e, security tests, docs, deployment
 
 ## Blockers / needs user action
+
 - Disable public sign-ups in Supabase (Authentication → Sign In / Providers).
 - Railway/Vercel access for Phase 10.

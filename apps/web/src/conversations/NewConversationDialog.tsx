@@ -10,7 +10,13 @@ import { api, errorMessage } from '@/lib/api';
 
 const NONE = '__none__';
 
-export function NewConversationDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+export function NewConversationDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
   const customers = useCustomers();
   const [customerId, setCustomerId] = useState('');
   const [orderId, setOrderId] = useState(NONE);
@@ -36,7 +42,10 @@ export function NewConversationDialog({ open, onOpenChange }: { open: boolean; o
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent title="New conversation" description="Start a conversation with a customer of one of your brands.">
+      <DialogContent
+        title="New conversation"
+        description="Start a conversation with a customer of one of your brands."
+      >
         <div className="space-y-4">
           <Field label="Customer" htmlFor="new-customer">
             <Select
@@ -47,10 +56,17 @@ export function NewConversationDialog({ open, onOpenChange }: { open: boolean; o
                 setOrderId(NONE);
               }}
               placeholder={customers.isPending ? 'Loading…' : 'Choose a customer'}
-              options={(customers.data ?? []).map((c) => ({ value: c.id, label: `${c.name} (${c.email})` }))}
+              options={(customers.data ?? []).map((c) => ({
+                value: c.id,
+                label: `${c.name} (${c.email})`,
+              }))}
             />
           </Field>
-          <Field label="Order (optional)" htmlFor="new-order" hint="Linking an order lets the assistant use verified order facts.">
+          <Field
+            label="Order (optional)"
+            htmlFor="new-order"
+            hint="Linking an order lets the assistant use verified order facts."
+          >
             <Select
               id="new-order"
               value={orderId}
@@ -58,7 +74,10 @@ export function NewConversationDialog({ open, onOpenChange }: { open: boolean; o
               disabled={!customer}
               options={[
                 { value: NONE, label: 'No order' },
-                ...(customer?.orders ?? []).map((o) => ({ value: o.id, label: `${o.order_number} · ${o.status}` })),
+                ...(customer?.orders ?? []).map((o) => ({
+                  value: o.id,
+                  label: `${o.order_number} · ${o.status}`,
+                })),
               ]}
             />
           </Field>
@@ -66,7 +85,11 @@ export function NewConversationDialog({ open, onOpenChange }: { open: boolean; o
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button disabled={!customerId} loading={create.isPending} onClick={() => create.mutate()}>
+            <Button
+              disabled={!customerId}
+              loading={create.isPending}
+              onClick={() => create.mutate()}
+            >
               Start conversation
             </Button>
           </div>

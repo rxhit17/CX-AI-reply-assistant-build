@@ -29,7 +29,8 @@ export function useConversations(filters: { brand_id?: string; status?: string; 
   return useQuery({
     queryKey: ['conversations', filters],
     queryFn: async () =>
-      (await api.get<{ conversations: ConversationListItem[] }>(`/api/conversations?${params}`)).conversations,
+      (await api.get<{ conversations: ConversationListItem[] }>(`/api/conversations?${params}`))
+        .conversations,
     refetchInterval: 60_000, // safety net if a realtime event is missed
   });
 }
@@ -46,7 +47,9 @@ export function useOrder(conversationId: string | undefined) {
   return useQuery({
     queryKey: ['order', conversationId],
     enabled: Boolean(conversationId),
-    queryFn: async () => (await api.get<{ order: OrderRow | null }>(`/api/conversations/${conversationId}/order`)).order,
+    queryFn: async () =>
+      (await api.get<{ order: OrderRow | null }>(`/api/conversations/${conversationId}/order`))
+        .order,
   });
 }
 
@@ -62,20 +65,37 @@ export function useCustomers(brandId?: string) {
   return useQuery({
     queryKey: ['customers', brandId],
     queryFn: async () =>
-      (await api.get<{ customers: CustomerRow[] }>(`/api/customers${brandId ? `?brand_id=${brandId}` : ''}`)).customers,
+      (
+        await api.get<{ customers: CustomerRow[] }>(
+          `/api/customers${brandId ? `?brand_id=${brandId}` : ''}`,
+        )
+      ).customers,
   });
 }
 
-export function useKb(filters: { brand_id?: string; category?: string; q?: string; active?: string; include_archived?: string }) {
+export function useKb(filters: {
+  brand_id?: string;
+  category?: string;
+  q?: string;
+  active?: string;
+  include_archived?: string;
+}) {
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(filters)) if (v) params.set(k, v);
   return useQuery({
     queryKey: ['kb', filters],
-    queryFn: async () => (await api.get<{ entries: KbRow[] }>(`/api/knowledge-base?${params}`)).entries,
+    queryFn: async () =>
+      (await api.get<{ entries: KbRow[] }>(`/api/knowledge-base?${params}`)).entries,
   });
 }
 
-export function useLogs(filters: { brand_id?: string; status?: string; agent_id?: string; from?: string; to?: string }) {
+export function useLogs(filters: {
+  brand_id?: string;
+  status?: string;
+  agent_id?: string;
+  from?: string;
+  to?: string;
+}) {
   const params = new URLSearchParams({ limit: '100' });
   for (const [k, v] of Object.entries(filters)) if (v) params.set(k, v);
   return useQuery({

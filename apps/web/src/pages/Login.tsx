@@ -23,7 +23,8 @@ export function Login() {
     setError(null);
     const message = await signIn(email.trim(), password);
     setBusy(false);
-    if (message) setError(message === 'Invalid login credentials' ? 'Incorrect email or password.' : message);
+    if (message)
+      setError(message === 'Invalid login credentials' ? 'Incorrect email or password.' : message);
     else navigate(from, { replace: true });
   }
 
@@ -34,10 +35,24 @@ export function Login() {
         <p className="mb-5 mt-1 text-sm text-muted-foreground">Use your support-team account.</p>
         <form onSubmit={onSubmit} className="space-y-4" noValidate>
           <Field label="Email" htmlFor="email">
-            <Input id="email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Input
+              id="email"
+              type="email"
+              autoComplete="username"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
           </Field>
           <Field label="Password" htmlFor="password" error={error}>
-            <Input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            <Input
+              id="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
           </Field>
           <Button type="submit" className="w-full" loading={busy} disabled={!email || !password}>
             Sign in

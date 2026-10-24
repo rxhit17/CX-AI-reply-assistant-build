@@ -31,15 +31,27 @@ export function ConversationList({ activeId }: { activeId?: string }) {
           </Button>
         </div>
         <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
-          <Input aria-label="Search conversations" placeholder="Search customer or message" className="pl-8" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Search
+            className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground"
+            aria-hidden
+          />
+          <Input
+            aria-label="Search conversations"
+            placeholder="Search customer or message"
+            className="pl-8"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
         </div>
         <div className="grid grid-cols-2 gap-2">
           <Select
             aria-label="Filter by brand"
             value={brand}
             onValueChange={setBrand}
-            options={[{ value: ALL, label: 'All brands' }, ...(brands.data ?? []).map((b) => ({ value: b.id, label: b.name }))]}
+            options={[
+              { value: ALL, label: 'All brands' },
+              ...(brands.data ?? []).map((b) => ({ value: b.id, label: b.name })),
+            ]}
           />
           <Select
             aria-label="Filter by status"
@@ -64,7 +76,9 @@ export function ConversationList({ activeId }: { activeId?: string }) {
         ) : list.isError ? (
           <ErrorState message={list.error.message} onRetry={() => void list.refetch()} />
         ) : list.data.length === 0 ? (
-          <EmptyState title="No conversations found">Adjust the filters, or start a new conversation with the button above.</EmptyState>
+          <EmptyState title="No conversations found">
+            Adjust the filters, or start a new conversation with the button above.
+          </EmptyState>
         ) : (
           <ul>
             {list.data.map((c) => (
@@ -80,9 +94,16 @@ export function ConversationList({ activeId }: { activeId?: string }) {
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm font-medium">{c.customer_name}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">{relativeTime(c.last_activity_at)}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {relativeTime(c.last_activity_at)}
+                    </span>
                   </div>
-                  <p className={cn('mt-0.5 truncate text-xs', c.unread_count > 0 ? 'font-medium text-foreground' : 'text-muted-foreground')}>
+                  <p
+                    className={cn(
+                      'mt-0.5 truncate text-xs',
+                      c.unread_count > 0 ? 'font-medium text-foreground' : 'text-muted-foreground',
+                    )}
+                  >
                     {c.last_message_sender === 'agent' && 'You: '}
                     {c.last_message_body || '(attachment)'}
                   </p>

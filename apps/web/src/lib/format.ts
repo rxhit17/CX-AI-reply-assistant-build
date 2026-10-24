@@ -20,4 +20,5 @@ export function money(value: number, currency = 'USD') {
   return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(value);
 }
 
-export const titleCase = (s: string) => s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+export const titleCase = (s: string) =>
+  s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());

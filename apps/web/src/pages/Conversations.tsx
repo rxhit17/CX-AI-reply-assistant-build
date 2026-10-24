@@ -22,10 +22,16 @@ export function Conversations() {
         <>
           <div className={cn('min-w-0 flex-1 flex-col', details ? 'hidden lg:flex' : 'flex')}>
             <div className="flex items-center gap-2 border-b bg-card px-3 py-1.5 md:hidden">
-              <Link to="/conversations" className="inline-flex items-center gap-1 text-xs font-medium text-primary">
+              <Link
+                to="/conversations"
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary"
+              >
                 <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> Inbox
               </Link>
-              <button className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-primary lg:hidden" onClick={() => setDetails(true)}>
+              <button
+                className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-primary lg:hidden"
+                onClick={() => setDetails(true)}
+              >
                 <PanelRight className="h-3.5 w-3.5" aria-hidden /> Details & AI
               </button>
             </div>
@@ -35,9 +41,15 @@ export function Conversations() {
           </div>
           <aside
             aria-label="Customer details and AI assistant"
-            className={cn('w-full shrink-0 border-l bg-card lg:block lg:w-[22rem] xl:w-[26rem]', details ? 'block' : 'hidden')}
+            className={cn(
+              'w-full shrink-0 border-l bg-card lg:block lg:w-[22rem] xl:w-[26rem]',
+              details ? 'block' : 'hidden',
+            )}
           >
-            <button className="flex w-full items-center gap-1 border-b px-3 py-1.5 text-xs font-medium text-primary lg:hidden" onClick={() => setDetails(false)}>
+            <button
+              className="flex w-full items-center gap-1 border-b px-3 py-1.5 text-xs font-medium text-primary lg:hidden"
+              onClick={() => setDetails(false)}
+            >
               <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> Back to chat
             </button>
             <SidePanel conversationId={id} />
@@ -45,8 +57,12 @@ export function Conversations() {
         </>
       ) : (
         <div className="hidden flex-1 items-center justify-center md:flex">
-          <EmptyState icon={<MessageSquareText className="h-8 w-8" />} title="Select a conversation">
-            Choose a conversation on the left to read the history, check the order and draft a reply with the AI assistant.
+          <EmptyState
+            icon={<MessageSquareText className="h-8 w-8" />}
+            title="Select a conversation"
+          >
+            Choose a conversation on the left to read the history, check the order and draft a reply
+            with the AI assistant.
           </EmptyState>
         </div>
       )}

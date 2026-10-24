@@ -7,19 +7,22 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 
 // ---------------------------------------------------------------- Badge
-const badgeVariants = cva('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium', {
-  variants: {
-    tone: {
-      neutral: 'bg-slate-100 text-slate-700',
-      green: 'bg-emerald-50 text-emerald-700',
-      amber: 'bg-amber-50 text-amber-800',
-      red: 'bg-red-50 text-red-700',
-      blue: 'bg-sky-50 text-sky-700',
-      violet: 'bg-violet-50 text-violet-700',
+const badgeVariants = cva(
+  'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
+  {
+    variants: {
+      tone: {
+        neutral: 'bg-slate-100 text-slate-700',
+        green: 'bg-emerald-50 text-emerald-700',
+        amber: 'bg-amber-50 text-amber-800',
+        red: 'bg-red-50 text-red-700',
+        blue: 'bg-sky-50 text-sky-700',
+        violet: 'bg-violet-50 text-violet-700',
+      },
     },
+    defaultVariants: { tone: 'neutral' },
   },
-  defaultVariants: { tone: 'neutral' },
-});
+);
 export function Badge({
   className,
   tone,
@@ -33,10 +36,22 @@ export const Card = ({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
   <div className={cn('rounded-lg border bg-card shadow-sm', className)} {...props} />
 );
 export const Skeleton = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn('animate-pulse rounded-md bg-slate-200/70', className)} aria-hidden {...props} />
+  <div
+    className={cn('animate-pulse rounded-md bg-slate-200/70', className)}
+    aria-hidden
+    {...props}
+  />
 );
 
-export function EmptyState({ icon, title, children }: { icon?: React.ReactNode; title: string; children?: React.ReactNode }) {
+export function EmptyState({
+  icon,
+  title,
+  children,
+}: {
+  icon?: React.ReactNode;
+  title: string;
+  children?: React.ReactNode;
+}) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
       {icon && <div className="text-muted-foreground">{icon}</div>}
@@ -48,7 +63,10 @@ export function EmptyState({ icon, title, children }: { icon?: React.ReactNode; 
 
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div role="alert" className="m-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+    <div
+      role="alert"
+      className="m-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+    >
       <p>{message}</p>
       {onRetry && (
         <button className="mt-2 font-medium underline" onClick={onRetry}>
@@ -87,7 +105,10 @@ export function DialogContent({
   description,
   children,
   ...props
-}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { title: string; description?: string }) {
+}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+  title: string;
+  description?: string;
+}) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-slate-900/40" />
@@ -100,12 +121,19 @@ export function DialogContent({
       >
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <DialogPrimitive.Title className="text-base font-semibold">{title}</DialogPrimitive.Title>
-            <DialogPrimitive.Description className={cn('mt-1 text-sm text-muted-foreground', !description && 'sr-only')}>
+            <DialogPrimitive.Title className="text-base font-semibold">
+              {title}
+            </DialogPrimitive.Title>
+            <DialogPrimitive.Description
+              className={cn('mt-1 text-sm text-muted-foreground', !description && 'sr-only')}
+            >
               {description ?? title}
             </DialogPrimitive.Description>
           </div>
-          <DialogPrimitive.Close className="rounded p-1 text-muted-foreground hover:bg-muted" aria-label="Close">
+          <DialogPrimitive.Close
+            className="rounded p-1 text-muted-foreground hover:bg-muted"
+            aria-label="Close"
+          >
             <X className="h-4 w-4" />
           </DialogPrimitive.Close>
         </div>
@@ -158,7 +186,11 @@ export function Select({
         </SelectPrimitive.Icon>
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal>
-        <SelectPrimitive.Content position="popper" sideOffset={4} className="z-50 max-h-72 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-md border bg-card shadow-lg">
+        <SelectPrimitive.Content
+          position="popper"
+          sideOffset={4}
+          className="z-50 max-h-72 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-md border bg-card shadow-lg"
+        >
           <SelectPrimitive.Viewport className="p-1">
             {options.map((o) => (
               <SelectPrimitive.Item

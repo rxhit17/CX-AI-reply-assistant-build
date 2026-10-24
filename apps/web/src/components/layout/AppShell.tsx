@@ -1,4 +1,13 @@
-import { BookOpen, LayoutDashboard, LogOut, MessagesSquare, ScrollText, Settings, Wifi, WifiOff } from 'lucide-react';
+import {
+  BookOpen,
+  LayoutDashboard,
+  LogOut,
+  MessagesSquare,
+  ScrollText,
+  Settings,
+  Wifi,
+  WifiOff,
+} from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthProvider';
 import { Badge } from '@/components/ui/primitives';
@@ -20,7 +29,10 @@ function ConnectionBadge() {
     <span
       role="status"
       aria-label={`Realtime connection: ${status}`}
-      className={cn('inline-flex items-center gap-1.5 text-xs', live ? 'text-emerald-700' : 'text-amber-700')}
+      className={cn(
+        'inline-flex items-center gap-1.5 text-xs',
+        live ? 'text-emerald-700' : 'text-amber-700',
+      )}
       data-testid="connection-status"
     >
       {live ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
@@ -43,7 +55,10 @@ export function AppShell() {
             <ConnectionBadge />
           </div>
         </div>
-        <nav aria-label="Main" className="flex gap-1 overflow-x-auto px-2 pb-2 md:flex-1 md:flex-col md:overflow-visible md:pb-0">
+        <nav
+          aria-label="Main"
+          className="flex gap-1 overflow-x-auto px-2 pb-2 md:flex-1 md:flex-col md:overflow-visible md:pb-0"
+        >
           {NAV.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}

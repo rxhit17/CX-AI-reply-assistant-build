@@ -39,7 +39,10 @@ export function ChatPanel({ conversationId }: { conversationId: string }) {
   }, [messages?.length, conversationId]);
 
   // Mark the other side's messages as read while the conversation is open.
-  const unread = messages?.filter((m) => !m.read_at && m.sender_type === (mode === 'agent' ? 'customer' : 'agent')).length ?? 0;
+  const unread =
+    messages?.filter(
+      (m) => !m.read_at && m.sender_type === (mode === 'agent' ? 'customer' : 'agent'),
+    ).length ?? 0;
   useEffect(() => {
     if (unread === 0) return;
     api
@@ -49,7 +52,11 @@ export function ChatPanel({ conversationId }: { conversationId: string }) {
   }, [unread, mode, conversationId, queryClient]);
 
   const upload = useMutation({
-    mutationFn: (file: File) => api.upload<{ attachment: AttachmentRow }>(`/api/conversations/${conversationId}/attachments`, file),
+    mutationFn: (file: File) =>
+      api.upload<{ attachment: AttachmentRow }>(
+        `/api/conversations/${conversationId}/attachments`,
+        file,
+      ),
     onSuccess: ({ attachment }) => setAttachments((a) => [...a, attachment]),
     onError: (err) => toast.error(errorMessage(err)),
   });
@@ -64,7 +71,9 @@ export function ChatPanel({ conversationId }: { conversationId: string }) {
       }),
     onSuccess: ({ message }) => {
       queryClient.setQueryData<ConversationDetail>(['conversation', conversationId], (old) =>
-        old && !old.messages.some((m) => m.id === message.id) ? { ...old, messages: [...old.messages, message] } : old,
+        old && !old.messages.some((m) => m.id === message.id)
+          ? { ...old, messages: [...old.messages, message] }
+          : old,
       );
       setText('');
       setAttachments([]);
@@ -76,7 +85,8 @@ export function ChatPanel({ conversationId }: { conversationId: string }) {
   });
 
   const status = useMutation({
-    mutationFn: (next: 'open' | 'closed') => api.patch(`/api/conversations/${conversationId}`, { status: next }),
+    mutationFn: (next: 'open' | 'closed') =>
+      api.patch(`/api/conversations/${conversationId}`, { status: next }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
       void queryClient.invalidateQueries({ queryKey: ['conversations'] });
@@ -101,7 +111,8 @@ export function ChatPanel({ conversationId }: { conversationId: string }) {
     upload.mutate(file);
   }
 
-  const canSend = (text.trim().length > 0 || attachments.length > 0) && !send.isPending && !upload.isPending;
+  const canSend =
+    (text.trim().length > 0 || attachments.length > 0) && !send.isPending && !upload.isPending;
   const submit = () => canSend && send.mutate();
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -119,7 +130,8 @@ export function ChatPanel({ conversationId }: { conversationId: string }) {
       </div>
     );
   }
-  if (detail.isError) return <ErrorState message={detail.error.message} onRetry={() => void detail.refetch()} />;
+  if (detail.isError)
+    return <ErrorState message={detail.error.message} onRetry={() => void detail.refetch()} />;
 
   const { customer, brand, conversation } = detail.data;
   const closed = conversation.status === 'closed';
@@ -139,7 +151,11 @@ export function ChatPanel({ conversationId }: { conversationId: string }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <div role="group" aria-label="Sender mode" className="inline-flex rounded-md border bg-muted p-0.5 text-xs">
+          <div
+            role="group"
+            aria-label="Sender mode"
+            className="inline-flex rounded-md border bg-muted p-0.5 text-xs"
+          >
             {(
               [
                 ['agent', 'Agent', Headset],
@@ -151,23 +167,44 @@ export function ChatPanel({ conversationId }: { conversationId: string }) {
                 type="button"
                 aria-pressed={mode === m}
                 onClick={() => setMode(m)}
-                className={cn('inline-flex items-center gap-1 rounded px-2.5 py-1 font-medium', mode === m ? 'bg-card shadow-sm' : 'text-muted-foreground')}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded px-2.5 py-1 font-medium',
+                  mode === m ? 'bg-card shadow-sm' : 'text-muted-foreground',
+                )}
               >
                 <Icon className="h-3.5 w-3.5" aria-hidden /> {label}
               </button>
             ))}
           </div>
-          <Button size="sm" variant="outline" loading={status.isPending} onClick={() => status.mutate(closed ? 'open' : 'closed')}>
+          <Button
+            size="sm"
+            variant="outline"
+            loading={status.isPending}
+            onClick={() => status.mutate(closed ? 'open' : 'closed')}
+          >
             {closed ? 'Reopen' : 'Close'}
           </Button>
         </div>
       </header>
 
-      <div className="scroll-thin min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50 px-4 py-4" data-testid="message-list" aria-live="polite">
+      <div
+        className="scroll-thin min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50 px-4 py-4"
+        data-testid="message-list"
+        aria-live="polite"
+      >
         {messages && messages.length === 0 ? (
-          <EmptyState title="No messages yet">Send the first message below. Use the customer simulator to test replies end to end.</EmptyState>
+          <EmptyState title="No messages yet">
+            Send the first message below. Use the customer simulator to test replies end to end.
+          </EmptyState>
         ) : (
-          messages?.map((m) => <MessageBubble key={m.id} message={m} customerName={customer.name} agentName={m.sender_id === me?.id ? 'You' : undefined} />)
+          messages?.map((m) => (
+            <MessageBubble
+              key={m.id}
+              message={m}
+              customerName={customer.name}
+              agentName={m.sender_id === me?.id ? 'You' : undefined}
+            />
+          ))
         )}
         <div ref={bottom} />
       </div>
@@ -175,14 +212,21 @@ export function ChatPanel({ conversationId }: { conversationId: string }) {
       <div className="border-t bg-card p-3">
         {mode === 'customer' && (
           <p className="mb-2 flex items-center gap-1.5 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">
-            <Lock className="h-3 w-3" aria-hidden /> Customer simulator: messages are sent as <strong>{customer.name}</strong>. This is a test tool, not customer login.
+            <Lock className="h-3 w-3" aria-hidden /> Customer simulator: messages are sent as{' '}
+            <strong>{customer.name}</strong>. This is a test tool, not customer login.
           </p>
         )}
         {attachments.length > 0 && (
           <ul className="mb-2 flex flex-wrap gap-2" aria-label="Attachments to send">
             {attachments.map((a) => (
               <li key={a.id} className="relative">
-                {a.url && <img src={a.url} alt="Attachment preview" className="h-16 w-16 rounded-md object-cover ring-1 ring-slate-200" />}
+                {a.url && (
+                  <img
+                    src={a.url}
+                    alt="Attachment preview"
+                    className="h-16 w-16 rounded-md object-cover ring-1 ring-slate-200"
+                  />
+                )}
                 <button
                   type="button"
                   aria-label="Remove attachment"
@@ -207,12 +251,20 @@ export function ChatPanel({ conversationId }: { conversationId: string }) {
               e.target.value = '';
             }}
           />
-          <Button variant="outline" size="icon" aria-label="Attach image" loading={upload.isPending} onClick={() => fileInput.current?.click()}>
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Attach image"
+            loading={upload.isPending}
+            onClick={() => fileInput.current?.click()}
+          >
             {!upload.isPending && <ImagePlus className="h-4 w-4" />}
           </Button>
           <Textarea
             aria-label={mode === 'agent' ? 'Message to customer' : 'Message as customer'}
-            placeholder={mode === 'agent' ? 'Write a message to the customer…' : `Type as ${customer.name}…`}
+            placeholder={
+              mode === 'agent' ? 'Write a message to the customer…' : `Type as ${customer.name}…`
+            }
             className="max-h-40 min-h-[40px] flex-1 resize-none"
             rows={1}
             value={text}
@@ -220,12 +272,19 @@ export function ChatPanel({ conversationId }: { conversationId: string }) {
             onKeyDown={onKey}
             maxLength={4000}
           />
-          <Button onClick={submit} disabled={!canSend} loading={send.isPending} data-testid="send-message">
+          <Button
+            onClick={submit}
+            disabled={!canSend}
+            loading={send.isPending}
+            data-testid="send-message"
+          >
             {!send.isPending && <Send className="h-4 w-4" aria-hidden />}
             {mode === 'agent' ? 'Send' : 'Send as customer'}
           </Button>
         </div>
-        <p className="mt-1.5 text-[11px] text-muted-foreground">Enter to send · Shift+Enter for a new line · PNG, JPEG, WebP or GIF up to 5 MB</p>
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
+          Enter to send · Shift+Enter for a new line · PNG, JPEG, WebP or GIF up to 5 MB
+        </p>
       </div>
     </div>
   );
