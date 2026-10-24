@@ -163,6 +163,49 @@ describe('messaging', () => {
     expect(agent.json().message.ai_generation_id).toBeNull();
   });
 
+  it('unsends a message: text is removed, the row stays as a tombstone, and only the sender may do it', async () => {
+    const key = `it-${randomUUID()}`;
+    createdMessageKeys.push(key);
+    const sent = await call(bloom, 'POST', `/api/conversations/${MAYA}/messages`, {
+      body: 'Sent by mistake',
+      sender_type: 'agent',
+      client_message_id: key,
+    });
+    const messageId = sent.json().message.id;
+    const url = `/api/conversations/${MAYA}/messages/${messageId}`;
+
+    // another brand's agent cannot even see the conversation
+    expect((await call(nordic, 'DELETE', url)).statusCode).toBe(404);
+
+    const res = await call(bloom, 'DELETE', url);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().message).toMatchObject({ id: messageId, body: '' });
+    expect(res.json().message.unsent_at).toBeTruthy();
+    // idempotent
+    expect((await call(bloom, 'DELETE', url)).statusCode).toBe(200);
+
+    const detail = await call(bloom, 'GET', `/api/conversations/${MAYA}`);
+    const row = detail.json().messages.find((m: { id: string }) => m.id === messageId);
+    expect(row.unsent_at).toBeTruthy();
+    expect(row.body).toBe('');
+
+    // the customer simulator can unsend a customer message too
+    const ckey = `it-${randomUUID()}`;
+    createdMessageKeys.push(ckey);
+    const cust = await call(bloom, 'POST', `/api/conversations/${MAYA}/messages`, {
+      body: 'Customer typo',
+      sender_type: 'customer',
+      client_message_id: ckey,
+    });
+    const cres = await call(
+      bloom,
+      'DELETE',
+      `/api/conversations/${MAYA}/messages/${cust.json().message.id}`,
+    );
+    expect(cres.statusCode).toBe(200);
+    expect(cres.json().message.body).toBe('');
+  });
+
   it('validates input and enforces brand scope', async () => {
     const empty = await call(bloom, 'POST', `/api/conversations/${MAYA}/messages`, {
       body: '',

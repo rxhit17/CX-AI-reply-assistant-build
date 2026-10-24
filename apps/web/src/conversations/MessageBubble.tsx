@@ -1,5 +1,6 @@
-import { Check, CheckCheck, Sparkles } from 'lucide-react';
+import { Ban, Check, CheckCheck, Sparkles, Undo2 } from 'lucide-react';
 import { useState } from 'react';
+import { useAuth } from '@/auth/AuthProvider';
 import { Dialog, DialogContent } from '@/components/ui/primitives';
 import { formatTime } from '@/lib/format';
 import type { MessageRow } from '@/lib/types';
@@ -10,18 +11,57 @@ export function MessageBubble({
   customerName,
   agentName,
   viewAs = 'agent',
+  onUnsend,
+  unsending = false,
 }: {
   message: MessageRow;
   customerName: string;
   agentName?: string;
   /** Whose side of the conversation is being viewed: that side's own messages sit on the right. */
   viewAs?: 'agent' | 'customer';
+  /** Withdraws the message. Only offered on the viewer's own messages. */
+  onUnsend?: () => void;
+  unsending?: boolean;
 }) {
+  const { me } = useAuth();
+  const [confirming, setConfirming] = useState(false);
   const [zoom, setZoom] = useState<string | null>(null);
   const fromCustomer = message.sender_type === 'customer';
   const mine = viewAs === 'customer' ? fromCustomer : !fromCustomer;
   const isAi = Boolean(message.ai_generation_id);
   const images = message.attachments ?? [];
+  const unsent = Boolean(message.unsent_at);
+  // Agents may unsend their own messages (admins any); the simulator may unsend the customer's.
+  const canUnsend =
+    Boolean(onUnsend) &&
+    !unsent &&
+    mine &&
+    message.sender_type !== 'system' &&
+    (fromCustomer || message.sender_id === me?.id || me?.role === 'admin');
+
+  if (unsent) {
+    return (
+      <div
+        className={cn('flex', mine ? 'justify-end' : 'justify-start')}
+        data-testid="message-unsent"
+      >
+        <div className="max-w-[78%] space-y-1">
+          <p
+            className={cn(
+              'flex items-center gap-1.5 rounded-2xl border border-dashed px-3.5 py-2 text-sm italic text-muted-foreground',
+              mine && 'justify-end',
+            )}
+          >
+            <Ban className="h-3.5 w-3.5" aria-hidden />
+            {mine ? 'You unsent a message' : 'This message was unsent'}
+          </p>
+          <p className={cn('px-1 text-[11px] text-muted-foreground', mine && 'text-right')}>
+            <time dateTime={message.created_at}>{formatTime(message.created_at)}</time>
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -82,6 +122,39 @@ export function MessageBubble({
           )}
         >
           <time dateTime={message.created_at}>{formatTime(message.created_at)}</time>
+          {canUnsend &&
+            (confirming ? (
+              <span className="inline-flex items-center gap-1.5">
+                <button
+                  type="button"
+                  className="font-medium text-red-600 hover:underline disabled:opacity-50"
+                  disabled={unsending}
+                  onClick={() => {
+                    onUnsend?.();
+                    setConfirming(false);
+                  }}
+                  data-testid="confirm-unsend"
+                >
+                  Unsend for everyone
+                </button>
+                <button
+                  type="button"
+                  className="hover:underline"
+                  onClick={() => setConfirming(false)}
+                >
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="inline-flex items-center gap-0.5 hover:text-foreground hover:underline"
+                onClick={() => setConfirming(true)}
+                data-testid="unsend-message"
+              >
+                <Undo2 className="h-3 w-3" aria-hidden /> Unsend
+              </button>
+            ))}
           {!fromCustomer &&
             viewAs === 'agent' &&
             (message.read_at ? (

@@ -77,6 +77,8 @@ export const messageSchema = z.object({
   delivered_at: ts.nullable(),
   read_at: ts.nullable(),
   created_at: ts,
+  /** Set when the sender withdrew the message; its body and attachments are then removed. */
+  unsent_at: ts.nullable().optional(),
   attachments: z.array(attachmentSchema).optional(),
 });
 export type Message = z.infer<typeof messageSchema>;

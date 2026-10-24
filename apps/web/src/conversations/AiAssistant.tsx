@@ -294,7 +294,8 @@ export function AiAssistant({
             </label>
             <Textarea
               id="draft-body"
-              className="min-h-[170px] text-sm"
+              autoGrow
+              className="max-h-[28rem] min-h-[170px] resize-none text-sm"
               value={body}
               onChange={(e) => setBody(e.target.value)}
               data-testid="draft-body"

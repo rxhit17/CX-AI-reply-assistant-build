@@ -55,6 +55,7 @@ export interface MessageRow {
   delivered_at: string | null;
   read_at: string | null;
   created_at: string;
+  unsent_at?: string | null;
   attachments?: AttachmentRow[];
 }
 

@@ -16,6 +16,7 @@ import {
   markRead,
   sendMessage,
   setConversationStatus,
+  unsendMessage,
   uploadAttachment,
 } from '../services/conversations.js';
 
@@ -66,6 +67,13 @@ export async function conversationRoutes(app: FastifyInstance, { db }: Deps) {
       return reply.status(duplicate ? 200 : 201).send({ message, duplicate });
     },
   );
+
+  app.delete('/conversations/:id/messages/:messageId', async (req) => {
+    const { id, messageId } = z
+      .object({ id: z.string().uuid(), messageId: z.string().uuid() })
+      .parse(req.params);
+    return { message: await unsendMessage(db, req.user, id, messageId) };
+  });
 
   app.post(
     '/conversations/:id/attachments',

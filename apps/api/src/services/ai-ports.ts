@@ -31,6 +31,7 @@ export function createGenerationPorts(db: SupabaseClient): GenerationPorts {
           .from('messages')
           .select('id, sender_type, body, created_at, message_attachments(id, mime_type)')
           .eq('conversation_id', conversationId)
+          .is('unsent_at', null)
           .order('created_at', { ascending: false })
           .limit(MAX_HISTORY),
       ]);

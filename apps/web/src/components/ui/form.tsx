@@ -13,12 +13,34 @@ export const Input = React.forwardRef<
 ));
 Input.displayName = 'Input';
 
+/**
+ * `autoGrow` makes the box follow its content: it grows as the text gets longer (up to the max-height in
+ * `className`, then scrolls) and shrinks back when the text is cleared or shortened.
+ */
 export const Textarea = React.forwardRef<
   HTMLTextAreaElement,
-  React.TextareaHTMLAttributes<HTMLTextAreaElement>
->(({ className, ...props }, ref) => (
-  <textarea ref={ref} className={cn(field, 'min-h-[80px] py-2', className)} {...props} />
-));
+  React.TextareaHTMLAttributes<HTMLTextAreaElement> & { autoGrow?: boolean }
+>(({ className, autoGrow, ...props }, ref) => {
+  const inner = React.useRef<HTMLTextAreaElement | null>(null);
+  const setRef = (el: HTMLTextAreaElement | null) => {
+    inner.current = el;
+    if (typeof ref === 'function') ref(el);
+    else if (ref) ref.current = el;
+  };
+  React.useLayoutEffect(() => {
+    const el = inner.current;
+    if (!autoGrow || !el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }, [autoGrow, props.value]);
+  return (
+    <textarea
+      ref={setRef}
+      className={cn(field, 'min-h-[80px] py-2', autoGrow && 'overflow-y-auto', className)}
+      {...props}
+    />
+  );
+});
 Textarea.displayName = 'Textarea';
 
 export const Label = React.forwardRef<

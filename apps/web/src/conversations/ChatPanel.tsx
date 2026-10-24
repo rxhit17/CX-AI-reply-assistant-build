@@ -19,6 +19,16 @@ export function ChatPanel({ conversationId }: { conversationId: string }) {
   const { me } = useAuth();
   const queryClient = useQueryClient();
   const detail = useConversation(conversationId);
+  const unsend = useMutation({
+    mutationFn: (messageId: string) =>
+      api.delete(`/api/conversations/${conversationId}/messages/${messageId}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
+      void queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      void queryClient.invalidateQueries({ queryKey: ['draft', conversationId] });
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  });
   const [mode, setMode] = useState<Mode>('agent');
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<AttachmentRow[]>([]);
@@ -203,6 +213,8 @@ export function ChatPanel({ conversationId }: { conversationId: string }) {
               message={m}
               customerName={customer.name}
               viewAs={mode}
+              onUnsend={() => unsend.mutate(m.id)}
+              unsending={unsend.isPending && unsend.variables === m.id}
               agentName={m.sender_id === me?.id ? 'You' : undefined}
             />
           ))
@@ -266,7 +278,8 @@ export function ChatPanel({ conversationId }: { conversationId: string }) {
             placeholder={
               mode === 'agent' ? 'Write a message to the customer…' : `Type as ${customer.name}…`
             }
-            className="max-h-40 min-h-[40px] flex-1 resize-none"
+            autoGrow
+            className="max-h-48 min-h-[40px] flex-1 resize-none"
             rows={1}
             value={text}
             onChange={(e) => setText(e.target.value)}

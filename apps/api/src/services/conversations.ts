@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Attachment, Message, SendMessageRequest } from '@cx/shared';
 import { assertBrandAccess, type AuthUser } from '../auth.js';
-import { badRequest, notFound } from '../errors.js';
+import { badRequest, forbidden, notFound } from '../errors.js';
 import { EXTENSION, validateImage } from '../files.js';
 
 const ATTACHMENT_BUCKET = 'attachments';
@@ -237,6 +237,62 @@ export async function sendMessage(
     if (linkErr) throw new Error(linkErr.message);
   }
   return { message: (await hydrate(db, data)) as Message, duplicate: false };
+}
+
+/**
+ * Withdraws a message. Agents may unsend their own messages (admins any agent message); the customer simulator,
+ * which stands in for the customer, may unsend customer messages. The row is kept as a tombstone: text and
+ * attachments are removed, and drafts that were written for an unsent customer message are superseded.
+ */
+export async function unsendMessage(
+  db: SupabaseClient,
+  user: AuthUser,
+  conversationId: string,
+  messageId: string,
+): Promise<Message> {
+  const conv = await loadConversation(db, user, conversationId);
+  const { data: msg, error } = await db
+    .from('messages')
+    .select('*')
+    .eq('id', messageId)
+    .eq('conversation_id', conv.id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!msg) throw notFound('Message');
+  if (msg.sender_type === 'system')
+    throw badRequest('System messages cannot be unsent', 'NOT_UNSENDABLE');
+  if (msg.sender_type === 'agent' && msg.sender_id !== user.id && user.role !== 'admin')
+    throw forbidden('You can only unsend your own messages');
+  if (msg.unsent_at) return (await hydrate(db, msg)) as Message;
+
+  const { data: atts } = await db
+    .from('message_attachments')
+    .select('id, storage_path')
+    .eq('message_id', msg.id);
+  const paths = (atts ?? []).map((a) => a.storage_path as string);
+
+  const { data: updated, error: updErr } = await db
+    .from('messages')
+    .update({ body: '', unsent_at: new Date().toISOString(), unsent_by: user.id })
+    .eq('id', msg.id)
+    .select('*')
+    .single();
+  if (updErr) throw new Error(updErr.message);
+
+  if (paths.length > 0) {
+    await db.from('message_attachments').delete().eq('message_id', msg.id);
+    await db.storage.from(ATTACHMENT_BUCKET).remove(paths);
+  }
+  if (msg.sender_type === 'customer') {
+    // A draft answering a message that no longer exists must not be approved or sent.
+    await db
+      .from('ai_generations')
+      .update({ status: 'superseded' })
+      .eq('conversation_id', conv.id)
+      .eq('trigger_message_id', msg.id)
+      .in('status', ['draft', 'edited', 'approved']);
+  }
+  return (await hydrate(db, updated)) as Message;
 }
 
 async function hydrate(db: SupabaseClient, message: Message): Promise<Message> {
