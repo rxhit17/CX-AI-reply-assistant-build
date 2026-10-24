@@ -19,6 +19,7 @@ export const ISSUE_TYPES = [
   'cancellation',
   'shipping',
   'warranty',
+  'mismatch',
   'general',
   'unknown',
 ] as const;
@@ -90,6 +91,11 @@ export const caseUpdateSchema = z.object({
   asks_next_step: z
     .boolean()
     .describe('True if the latest message asks what happens next / how to proceed'),
+  asks_clarification: z
+    .boolean()
+    .describe(
+      'True if the customer explicitly asks for something to be explained again or says they did not understand',
+    ),
   corrections: z
     .array(z.string())
     .describe(
@@ -127,6 +133,7 @@ export const NEXT_ACTIONS = [
   'provide_next_step',
   'order_status_update',
   'handoff_to_human',
+  'follow_up_pending',
 ] as const;
 export type WorkflowStage = (typeof WORKFLOW_STAGES)[number];
 export type NextAction = (typeof NEXT_ACTIONS)[number];
@@ -153,6 +160,17 @@ export const emptyCaseState = (): CaseState => ({
   as_of_message_id: null,
 });
 
+/** Facts that say WHY the case exists (as opposed to the item's condition). */
+const CAUSE_FACTS: FactKey[] = [
+  'customer_ordered_wrong_item',
+  'item_differs_from_listing',
+  'item_damaged',
+  'item_missing_or_incomplete',
+];
+/** return / refund / exchange describe the same customer goal; drifting between them is not a change of issue. */
+const issueFamily = (t: IssueType): string =>
+  ['return', 'refund', 'exchange'].includes(t) ? 'resolution' : t;
+
 const union = <T>(...lists: T[][]): T[] => [...new Set(lists.flat())];
 const without = <T>(list: T[], ...remove: T[][]): T[] => {
   const drop = new Set(remove.flat());
@@ -171,22 +189,49 @@ export function mergeCaseState(
   latestMessageId: string,
 ): CaseState {
   const prev = previous ?? emptyCaseState();
+  // A retraction is only honoured when it is a real correction: the model recorded a correction note AND the same
+  // update REPLACES what was withdrawn (a different issue type, a newly confirmed fact, or an explicit denial).
+  // Stray retractions on unrelated messages (observed with the live model, even with a note attached) therefore
+  // cannot erase a fact the customer never withdrew. An explicit denial ("it has been used") always overrides.
+  // "Replaces" is judged per fact and by KIND: an explicit denial of it, a material change of issue (not mere
+  // return/refund/exchange drift), or, for a fact about what went wrong, a different such fact newly confirmed.
+  // Confirming unrelated facts (unused, packaging) never justifies withdrawing the reason for the case.
+  const materialIssueChange =
+    update.issue_type !== 'unknown' &&
+    issueFamily(update.issue_type) !== issueFamily(prev.issue_type);
+  const isReplaced = (f: FactKey) =>
+    update.denied_facts.includes(f) ||
+    materialIssueChange ||
+    (CAUSE_FACTS.includes(f) &&
+      update.confirmed_facts.some(
+        (g) => g !== f && CAUSE_FACTS.includes(g) && !prev.confirmed_facts.includes(g),
+      ));
+  const retracted = update.corrections.length > 0 ? update.retracted_facts.filter(isReplaced) : [];
   const confirmed = without(
     union(prev.confirmed_facts, update.confirmed_facts),
     update.denied_facts,
-    update.retracted_facts,
+    retracted,
   );
   const denied = without(
     union(prev.denied_facts, update.denied_facts),
     update.confirmed_facts,
-    update.retracted_facts,
+    retracted,
   );
 
+  // A model that only talks about one half of "return and refund" (e.g. while answering "what is the next step?")
+  // has not withdrawn the other half. Narrowing needs an explicit correction in the same update.
+  const narrowing =
+    prev.desired_resolution === 'return_and_refund' &&
+    (update.desired_resolution === 'return' || update.desired_resolution === 'refund') &&
+    update.corrections.length === 0;
   const resolutionChanged =
     update.desired_resolution !== 'unknown' &&
-    update.desired_resolution !== prev.desired_resolution;
+    update.desired_resolution !== prev.desired_resolution &&
+    !narrowing;
   const desired =
-    update.desired_resolution === 'unknown' ? prev.desired_resolution : update.desired_resolution;
+    update.desired_resolution === 'unknown' || narrowing
+      ? prev.desired_resolution
+      : update.desired_resolution;
   const confirmedResolution =
     desired === 'none' || desired === 'unknown'
       ? false
@@ -235,7 +280,7 @@ export function answeredTopics(
 /** Compact, model-facing description. Customer statements are labelled as unverified. */
 export function describeCaseState(state: CaseState): string {
   const lines = [
-    `issue: ${state.issue_type}`,
+    `issue: ${state.issue_type === 'mismatch' ? 'mismatch (the item received differs from what was ordered; it is NOT yet known whether the seller made an error or the customer ordered the wrong item)' : state.issue_type}`,
     `customer wants: ${state.desired_resolution}${state.resolution_confirmed ? ' (CONFIRMED by the customer)' : ' (not yet confirmed)'}`,
     `customer states TRUE (unverified): ${state.confirmed_facts.join(', ') || 'nothing yet'}`,
     `customer states NOT true: ${state.denied_facts.join(', ') || 'nothing'}`,

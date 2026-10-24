@@ -366,8 +366,24 @@ describe('conversation progress checks', () => {
       ...SRC,
       content: SRC.content + ' We arrange a prepaid collection for defective items.',
     };
+    // documented only for defective items: allowed when the case involves a defect, not otherwise
     expect(
-      failing(base({ sources: [documented], reply: 'We can arrange a collection for you.' })),
+      failing(
+        base({
+          sources: [documented],
+          caseHasDefect: true,
+          reply: 'We can arrange a collection for you.',
+        }),
+      ),
     ).not.toContain('no_invented_procedure');
+    expect(
+      failing(
+        base({
+          sources: [documented],
+          caseHasDefect: false,
+          reply: 'We can arrange a collection for you.',
+        }),
+      ),
+    ).toContain('no_invented_procedure');
   });
 });

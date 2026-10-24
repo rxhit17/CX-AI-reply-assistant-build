@@ -78,9 +78,13 @@ function extractCase(history: HistoryItem[], latest: string): CaseUpdate {
       (yes && /packaging/i.test(lastAgent))
     )
       confirmed.add('original_packaging');
-    if (/\bdoesn'?t look like|\bnot (what|like what) i ordered|\bdifferent from\b/i.test(x)) {
+    if (
+      /\bdoesn'?t look like|\bnot (what|like what) i ordered|\bdifferent from\b|\b(wrong|different) (item|product|one) (arrived|was sent|was delivered)|\breceived the wrong\b/i.test(
+        x,
+      )
+    ) {
       confirmed.add('item_differs_from_listing');
-      issue = 'general';
+      issue = 'mismatch';
     }
     if (/\b(i )?(think )?i ordered the wrong\b|\bmy mistake\b|\bordered by mistake\b/i.test(x)) {
       confirmed.add('customer_ordered_wrong_item');
@@ -97,10 +101,10 @@ function extractCase(history: HistoryItem[], latest: string): CaseUpdate {
       issue = 'return';
     } else if (/\b(return|send (it )?back)\b/i.test(x)) {
       resolution = resolution === 'return_and_refund' ? resolution : 'return';
-      issue = issue === 'unknown' || issue === 'general' ? 'return' : issue;
+      issue = issue === 'unknown' || issue === 'mismatch' ? 'return' : issue;
     } else if (/\brefund|money back\b/i.test(x)) {
       resolution = resolution === 'return_and_refund' ? resolution : 'refund';
-      issue = issue === 'unknown' || issue === 'general' ? 'refund' : issue;
+      issue = issue === 'unknown' || issue === 'mismatch' ? 'refund' : issue;
     } else if (/\b(exchange|swap)\b/i.test(x)) {
       resolution = 'exchange';
       issue = 'exchange';
@@ -126,6 +130,10 @@ function extractCase(history: HistoryItem[], latest: string): CaseUpdate {
     other_facts: [],
     desired_resolution: resolution,
     resolution_confirmed: resolutionConfirmed,
+    asks_clarification:
+      /\b(explain (that |it )?again|did(n'?t| not) understand|can you clarify|what do you mean)\b/i.test(
+        latest,
+      ),
     asks_next_step:
       /\bnext steps?\b|\bwhat (do i|happens|now)\b|\bhow (do|can) i (proceed|return|send)\b/i.test(
         latest,
@@ -212,6 +220,19 @@ export function createMockLlm(): LlmPort {
           lines.push(`Your order was delivered on ${d.delivered_on}.`);
         else if (d?.state === 'not_shipped') lines.push('Your order has not shipped yet.');
         else lines.push('I am checking the latest status of your order.');
+      } else if (
+        input.nextAction === 'clarify_request' &&
+        input.missingInformation.includes('issue_cause')
+      ) {
+        lines.push(
+          'I am sorry that what arrived is not what you expected. Could you tell me whether we sent a different item than the one you ordered, or whether you would like to change something about your order?',
+        );
+        questions.push('other');
+      } else if (input.nextAction === 'follow_up_pending') {
+        lines.push(
+          'Thank you for following up. Your request is with our team, who will come back to you with the next steps.',
+        );
+        humanReview = true;
       } else if (input.nextAction === 'ask_missing_info') {
         if (input.missingInformation.includes('order_reference')) {
           lines.push('Could you share your order number so I can look up the details?');

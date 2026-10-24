@@ -354,13 +354,43 @@ describe('abuse protection', () => {
   });
 });
 
-describe('conversation case state (persistence)', () => {
-  it('is saved with each generation and reloaded as the previous state for the next run', async () => {
-    const { createGenerationPorts } = await import('../../apps/api/src/services/ai-ports.js');
+describe('conversation case state (persistence rules, real database)', () => {
+  const messageIds: string[] = [];
+
+  /** Adds a customer message to a conversation and returns its id. `ageMs` places it in the past. */
+  async function addCustomerMessage(
+    conversationId: string,
+    brandId: string,
+    body: string,
+    ageMs: number,
+  ) {
+    const { data, error } = await db
+      .from('messages')
+      .insert({
+        brand_id: brandId,
+        conversation_id: conversationId,
+        sender_type: 'customer',
+        body,
+        client_message_id: randomUUID(),
+        created_at: new Date(Date.now() - ageMs).toISOString(),
+      })
+      .select('id')
+      .single();
+    expect(error).toBeNull();
+    messageIds.push(data!.id);
+    return data!.id as string;
+  }
+
+  afterAll(async () => {
+    await db.from('ai_generations').delete().in('trigger_message_id', messageIds);
+    await db.from('messages').delete().in('id', messageIds);
+  });
+
+  it('is saved with each generation and exposed to the agent UI', async () => {
     const first = (await generate(bloom, LIAM)).json().draft;
     const { data: row } = await db
       .from('ai_generations')
-      .select('case_state, status')
+      .select('case_state')
       .eq('id', first.id)
       .single();
     expect(row?.case_state).toMatchObject({
@@ -369,13 +399,77 @@ describe('conversation case state (persistence)', () => {
       desired_resolution: expect.any(String),
       derived: { next_action: expect.any(String), workflow_stage: expect.any(String) },
     });
-    // draft detail exposes it to the agent UI
     const detail = await call(bloom, 'GET', `/api/ai/drafts/${first.id}`);
     expect(detail.json().draft.case_state.derived.next_action).toBeDefined();
+  });
 
-    const previous = await createGenerationPorts(db).loadPreviousCaseState(LIAM);
-    expect(previous).toEqual(row?.case_state);
-    // it never leaks across conversations
-    expect(await createGenerationPorts(db).loadPreviousCaseState(randomUUID())).toBeNull();
+  it('a regeneration never inherits the state computed for the same message', async () => {
+    const { createGenerationPorts } = await import('../../apps/api/src/services/ai-ports.js');
+    const ports = createGenerationPorts(db);
+    const m1 = await addCustomerMessage(LIAM, id('brand:bloom'), 'It is unused.', 120_000);
+    await generate(bloom, LIAM);
+    const m2 = await addCustomerMessage(LIAM, id('brand:bloom'), 'I want a refund please.', 60_000);
+    await generate(bloom, LIAM);
+    await generate(bloom, LIAM); // regeneration for the same message m2
+
+    const before = await ports.loadPreviousCaseState(LIAM, m2);
+    expect(before?.as_of_message_id).toBe(m1); // the state BEFORE m2, not the state computed for m2 (twice)
+    const own = await ports.loadPreviousCaseState(LIAM, m1);
+    expect(own?.as_of_message_id).not.toBe(m1);
+  });
+
+  it('an older generation that finished later cannot shadow the state of a newer message', async () => {
+    const { createGenerationPorts } = await import('../../apps/api/src/services/ai-ports.js');
+    const ports = createGenerationPorts(db);
+    const brand = id('brand:bloom');
+    const older = await addCustomerMessage(LIAM, brand, 'older message', 30_000);
+    const newer = await addCustomerMessage(LIAM, brand, 'newer message', 20_000);
+    const current = await addCustomerMessage(LIAM, brand, 'current message', 10_000);
+    const save = async (trigger: string, fact: string) => {
+      const { data, error } = await db.rpc('fn_save_generation', {
+        p_payload: {
+          brand_id: brand,
+          conversation_id: LIAM,
+          trigger_message_id: trigger,
+          status: 'draft',
+          body: 'x',
+          case_state: {
+            issue_type: 'return',
+            confirmed_facts: [fact],
+            denied_facts: [],
+            other_facts: [],
+            desired_resolution: 'unknown',
+            resolution_confirmed: false,
+            corrections: [],
+            as_of_message_id: trigger,
+          },
+        },
+      });
+      expect(error).toBeNull();
+      generations.push(data as string);
+    };
+    await save(newer, 'item_unused'); // the newer message's generation is written FIRST...
+    await save(older, 'original_packaging'); // ...and the older one LAST (out of order)
+    const prev = await ports.loadPreviousCaseState(LIAM, current);
+    expect(prev?.as_of_message_id).toBe(newer);
+    expect(prev?.confirmed_facts).toEqual(['item_unused']);
+  });
+
+  it('never returns state from another conversation, and ignores failed generations', async () => {
+    const { createGenerationPorts } = await import('../../apps/api/src/services/ai-ports.js');
+    const ports = createGenerationPorts(db);
+    await generate(bloom, MAYA);
+    const probe = await addCustomerMessage(LIAM, id('brand:bloom'), 'probe message', 1_000);
+    const prev = await ports.loadPreviousCaseState(LIAM, probe);
+    if (prev?.as_of_message_id) {
+      const { data } = await db
+        .from('messages')
+        .select('conversation_id')
+        .eq('id', prev.as_of_message_id)
+        .single();
+      expect(data?.conversation_id).toBe(LIAM);
+    }
+    expect(await ports.loadPreviousCaseState(randomUUID(), probe)).toBeNull();
+    expect(await ports.loadPreviousCaseState(MAYA, probe)).toBeNull(); // a message of another conversation yields nothing
   });
 });

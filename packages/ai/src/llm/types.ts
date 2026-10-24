@@ -166,6 +166,10 @@ export interface ComposeInput {
   avoidAsking: string[];
   /** The previous agent reply, so the model does not repeat it. */
   lastAgentReply: string | null;
+  /** Policy figures already given to the customer earlier in the conversation. */
+  alreadyStatedFigures: string[];
+  /** The customer explicitly asked for an explanation again. */
+  asksClarification: boolean;
   sources: { label: string; title: string; content: string }[];
   extraInstruction?: string;
   /** Blocking guardrail failures from the previous attempt, to correct on retry. */

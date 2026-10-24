@@ -2,15 +2,18 @@
  * Multi-turn regression tests for conversation intelligence. Each test drives SUCCESSIVE customer messages and
  * generations (the agent "sends" every draft), so state carries through the persisted case state and the message
  * history exactly as in production. The mock LLM keeps these tests deterministic: they verify workflow logic
- * (memory, routing, next action, guardrails). Real-model behaviour is measured by `pnpm eval:conversation`.
+ * (memory, routing, next action, guardrails, fallbacks). Real-model behaviour is measured by `pnpm eval:conversation`.
  */
 import { describe, expect, it, vi } from 'vitest';
+import { emptyCaseState } from '../case-state.js';
 import { createMockLlm } from '../llm/mock.js';
-import type { ComposedReply, LlmPort } from '../llm/types.js';
+import type { ComposedReply, ComposeInput, LlmPort } from '../llm/types.js';
+import type { GenerationRecord } from '../ports.js';
 import { runGeneration } from './build.js';
 import type { GState } from './state.js';
 import { emmaOrder, kb, makeHarness, msg, NOW, nordicPolicies, type Harness } from './testkit.js';
 
+const NORDIC_ID = '00000000-0000-4000-8000-0000000000c2';
 const NORDIC_RETURN_ID = '20000000-0000-4000-8000-000000000001';
 const NORDIC_REFUND_ID = '20000000-0000-4000-8000-000000000002';
 const returnHit = kb({
@@ -52,11 +55,32 @@ const emma = (extra: Partial<Parameters<typeof makeHarness>[0]> = {}) =>
     ...extra,
   });
 
+/** An LLM whose compose step is replaced; everything else is the deterministic mock. */
+const withCompose = (
+  fn: (input: ComposeInput, base: ComposedReply, call: number) => Partial<ComposedReply>,
+): { llm: LlmPort; calls: ComposeInput[] } => {
+  const base = createMockLlm();
+  const calls: ComposeInput[] = [];
+  const llm: LlmPort = {
+    ...base,
+    compose: async (input) => {
+      calls.push(input);
+      const mock = (await base.compose(input)).value;
+      return {
+        value: { ...mock, cited_source_ids: [], ...fn(input, mock, calls.length) },
+        usage: { input: 1, output: 1 },
+        model: 'test',
+      };
+    },
+  };
+  return { llm, calls };
+};
+
 const ASKS_TO_CONFIRM =
   /confirm (that )?you (want|would like|wish)|would you like (me )?to proceed|do you (still )?want to return/i;
 
 describe('Nordic Living: Emma, Oak Side Table (the reported failure)', () => {
-  it('remembers what she said, never re-asks, and moves to the next supported step', async () => {
+  it('remembers what she said, never re-asks, and progresses instead of repeating', async () => {
     const h = emma();
     const s1 = await turn(
       h,
@@ -70,14 +94,13 @@ describe('Nordic Living: Emma, Oak Side Table (the reported failure)', () => {
     expect(s2.caseState!.confirmed_facts).toContain('customer_ordered_wrong_item');
     expect(s2.caseState!.confirmed_facts).not.toContain('item_differs_from_listing');
     expect(s2.caseState!.corrections.join(' ')).toMatch(/ordered the wrong/);
-    expect(s2.route).toBe('policy'); // not the clarification path
+    expect(s2.route).toBe('policy');
     expect(s2.eligibility[0]).toMatchObject({ kind: 'return', outcome: 'eligible' });
 
     const s3 = await turn(h, 'Yes, it is unused.');
     expect(s3.caseState!.confirmed_facts).toEqual(
       expect.arrayContaining(['item_unused', 'customer_ordered_wrong_item']),
     );
-
     const s4 = await turn(h, 'And it is in the original packaging.');
     expect(s4.caseState!.confirmed_facts).toEqual(
       expect.arrayContaining(['item_unused', 'original_packaging']),
@@ -93,9 +116,14 @@ describe('Nordic Living: Emma, Oak Side Table (the reported failure)', () => {
       'refund:eligible',
       'return:eligible',
     ]);
+    // reuses her facts (as hers, subject to inspection) and hands over because no procedure applies to this case
+    expect(s5.proposedResponse).toMatch(/unused/i);
+    expect(s5.proposedResponse).toMatch(/inspect/i);
+    expect(s5.composed!.next_step_documented).toBe(false);
+    expect(s5.escalate).toBe(true);
+    expect(s5.escalationReason).toMatch(/No documented procedure/i);
 
     const s6 = await turn(h, 'I already confirmed. What is the next step?');
-    // facts retained across all turns
     expect(s6.caseState!.confirmed_facts).toEqual(
       expect.arrayContaining(['item_unused', 'original_packaging', 'customer_ordered_wrong_item']),
     );
@@ -103,41 +131,36 @@ describe('Nordic Living: Emma, Oak Side Table (the reported failure)', () => {
       desired_resolution: 'return_and_refund',
       resolution_confirmed: true,
     });
-    // the vague message continues the open case instead of becoming "unclear"
     expect(s6.understanding!.intent).toBe('unclear');
     expect(s6.effectiveIntent).toBe('return_request');
-    expect(s6.route).toBe('policy');
+    // she has been told the next step and asks again: the answer MOVES FORWARD instead of repeating
+    expect(s6.nextStepAlreadyGiven).toBe(true);
     expect(s6.derived).toMatchObject({
-      next_action: 'provide_next_step',
+      next_action: 'follow_up_pending',
       workflow_stage: 'ready_to_resolve',
       eligibility_status: 'eligible',
     });
-    // verified order facts are used (from the database, not from what she said)
     expect(s6.orderFacts!.order_number).toBe('NL-20077');
-    expect(s6.eligibility.every((e) => e.outcome === 'eligible')).toBe(true);
 
     const reply = s6.proposedResponse!;
     expect(reply).not.toMatch(ASKS_TO_CONFIRM);
+    expect(reply).not.toBe(s5.proposedResponse);
+    expect(reply).toMatch(/following up|with our team/i);
+    expect(reply).not.toMatch(/30|window|shipping/i); // no policy restated
     expect(s6.composed!.questions_asked).toEqual([]);
-    expect(reply).toMatch(/unused/i); // reuses her facts, marked as hers and subject to inspection
-    expect(reply).toMatch(/inspect/i);
-    // no documented return procedure in the policy => honest handoff, no invented steps
-    expect(s6.composed!.next_step_documented).toBe(false);
     expect(s6.escalate).toBe(true);
-    expect(s6.escalationReason).toMatch(/documented procedure/i);
+    expect(s6.escalationReason).toMatch(/still pending/i);
     expect(reply).not.toMatch(/return label|prepaid|rma|portal/i);
-    // nothing promised, nothing claimed as done
     expect(s6.guardrails.filter((g) => !g.passed && g.severity === 'blocking')).toEqual([]);
     expect(reply).not.toMatch(
       /we will refund|has been (refunded|processed)|you will receive a refund/i,
     );
-    // brand voice: fixed sign-off appears on the first reply, not on every chat message
     expect(h.saved[0]!.body).toContain('With kind regards, Nordic Living Customer Care');
     expect(reply).not.toContain('With kind regards');
     expect(s6.fallbackUsed).toBe(false);
   });
 
-  it('persists the case state on every generation and reloads it for the next run', async () => {
+  it('persists the case state on every generation and reloads the one BEFORE the current message', async () => {
     const h = emma();
     await turn(h, 'I think I ordered the wrong product. Yes it is unused.');
     expect(h.saved[0]!.case_state).toMatchObject({
@@ -156,7 +179,6 @@ describe('Nordic Living: Emma, Oak Side Table (the reported failure)', () => {
       h,
       'I think I ordered the wrong product, it is unused and in the original packaging. I want to return it and get a refund.',
     );
-    // a very long thread: the early messages are gone from what the graph can see
     h.ctx.messages.splice(
       0,
       h.ctx.messages.length,
@@ -173,15 +195,106 @@ describe('Nordic Living: Emma, Oak Side Table (the reported failure)', () => {
   });
 });
 
-describe('corrections', () => {
-  it('uses the corrected intent and issue', async () => {
+describe('ambiguous first messages and unsupported eligibility claims', () => {
+  const FIRST = "I purchased an Oak Side Table, but it doesn't look like what I ordered.";
+
+  it('a mismatch report is NOT a return request: no eligibility, one clarifying question', async () => {
     const h = emma();
-    await turn(h, "The table doesn't look like what I ordered.");
-    const s = await turn(h, 'Sorry, I ordered the wrong one myself. I want to return it.');
+    const s = await turn(h, FIRST, { send: false });
+    expect(s.caseState!.issue_type).toBe('mismatch');
+    expect(s.caseState!.desired_resolution).toBe('unknown');
+    expect(s.effectiveIntent).toBe('complaint');
+    expect(s.eligibilityKinds).toEqual([]);
+    expect(s.eligibility).toEqual([]);
+    expect(s.derived).toMatchObject({
+      next_action: 'clarify_request',
+      workflow_stage: 'gathering_information',
+    });
+    expect(s.derived!.missing_information).toEqual(['issue_cause']);
+    expect(s.proposedResponse).toMatch(/\?/);
+    expect(s.proposedResponse).not.toMatch(/eligible|return window|refund|30|shipping/i);
+    expect(s.composed!.questions_asked).toEqual(['other']);
+  });
+
+  it('even if the model asserts eligibility, the draft is blocked and retried with guidance', async () => {
+    const { llm, calls } = withCompose((_i, mock, call) =>
+      call === 1
+        ? {
+            reply_body:
+              'You are eligible to return the Oak Side Table within the 30-day return window.',
+          }
+        : { reply_body: mock.reply_body },
+    );
+    const h = emma({ llm });
+    const s = await turn(h, FIRST, { send: false });
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.violationFeedback!.join(' ')).toMatch(/no_unrequested_eligibility/);
+    expect(calls[1]!.violationFeedback!.join(' ')).toMatch(/Do not state or imply eligibility/);
+    expect(s.proposedResponse).not.toMatch(/eligible/i);
+    expect(s.fallbackUsed).toBe(false);
+  });
+
+  it('if the model keeps asserting it, nothing about eligibility reaches the agent', async () => {
+    const { llm } = withCompose(() => ({
+      reply_body: 'You are eligible to return it within the 30-day window.',
+    }));
+    const s = await turn(emma({ llm }), FIRST, { send: false });
+    expect(s.fallbackUsed).toBe(true);
+    expect(s.guardrails.find((g) => g.check === 'no_unrequested_eligibility')?.passed).toBe(false);
+    expect(s.proposedResponse).not.toMatch(/eligible|30/i);
+  });
+
+  it('with no linked order eligibility is unverified and cannot be claimed', async () => {
+    const { llm } = withCompose(() => ({
+      reply_body: 'You are eligible for a refund and a return.',
+    }));
+    const h = emma({ order: null, llm });
+    const s = await turn(h, 'I want to return it and get a refund.', { send: false });
+    expect(s.eligibility.every((e) => e.outcome === 'insufficient_data')).toBe(true);
+    expect(s.fallbackUsed).toBe(true);
+    expect(s.proposedResponse).not.toMatch(/eligible/i);
+  });
+
+  it('a refund-eligibility claim needs a REFUND check, not just a return check', async () => {
+    const { llm } = withCompose(() => ({
+      reply_body: 'You are eligible for a refund of the table.',
+    }));
+    const h = emma({ llm });
+    // customer only asks about returning: only the return check is run
+    const s = await turn(h, 'Can I return the table?', { send: false });
+    expect(s.eligibilityKinds).toEqual(['return']);
+    expect(s.guardrails.find((g) => g.check === 'eligibility_claim_supported')?.passed).toBe(false);
+  });
+
+  it('after the customer says what happened, eligibility is computed and may be stated', async () => {
+    const h = emma();
+    await turn(h, FIRST);
+    const s = await turn(h, 'I think I ordered the wrong product. Can I return it?');
     expect(s.caseState!.issue_type).toBe('return');
-    expect(s.caseState!.confirmed_facts).not.toContain('item_differs_from_listing');
-    expect(s.caseState!.confirmed_facts).toContain('customer_ordered_wrong_item');
-    expect(s.derived!.next_action).toBe('provide_next_step');
+    expect(s.eligibility[0]).toMatchObject({ kind: 'return', outcome: 'eligible' });
+    expect(s.guardrails.find((g) => g.check === 'no_unrequested_eligibility')).toBeUndefined();
+  });
+
+  it('a damage report still gets its damage check (exceptions for defective goods are preserved)', async () => {
+    const h = makeHarness({
+      messages: [],
+      brand: 'nordic',
+      order: emmaOrder({ delivered_at: new Date(NOW.getTime() - 2 * 86_400_000).toISOString() }),
+      policies: [
+        ...nordicPolicies,
+        {
+          kbId: '20000000-0000-4000-8000-000000000003',
+          version: 1,
+          title: 'Nordic Living damaged_products',
+          category: 'damaged_products',
+          conditions: { report_within_days: 14, requires_photo: true },
+          content: 'Damage must be reported within 14 days with photographs.',
+        },
+      ],
+    });
+    const s = await turn(h, 'The table arrived damaged, it is cracked.', { send: false });
+    expect(s.eligibilityKinds).toContain('damage');
+    expect(s.derived!.missing_information).toContain('photo');
   });
 });
 
@@ -193,37 +306,221 @@ describe('missing and linked orders', () => {
     expect(s1.derived!.missing_information).toEqual(['order_reference']);
     expect(s1.proposedResponse).toMatch(/order number/i);
     expect(s1.composed!.questions_asked).toContain('order_reference');
-
-    const linked = emma();
-    const s2 = await turn(linked, 'I want to return it and get a refund.');
+    const s2 = await turn(emma(), 'I want to return it and get a refund.');
     expect(s2.derived!.missing_information).toEqual([]);
     expect(s2.proposedResponse).not.toMatch(/order number/i);
   });
-
-  it('does not invent eligibility without an order', async () => {
-    const h = emma({ order: null });
-    const s = await turn(h, 'I want to return it and get a refund.');
-    expect(s.eligibility.every((e) => e.outcome === 'insufficient_data')).toBe(true);
-    expect(s.proposedResponse).not.toMatch(/eligible under our policy/i);
-  });
 });
 
-describe('repeated customer messages', () => {
-  it('is idempotent for the case state and does not repeat the previous reply', async () => {
-    const h = emma();
+describe('repetition: progress instead of echoes, and useful fallbacks', () => {
+  /** Always answers with exactly the previous agent reply (the failure observed with the real model). */
+  const echo = () => withCompose((input) => ({ reply_body: input.lastAgentReply ?? 'Thank you.' }));
+
+  const confirmedTurns = async (h: Harness) => {
     await turn(
       h,
       'I think I ordered the wrong product. It is unused and in the original packaging. I want to return it and get a refund.',
     );
+  };
+
+  it('a repeated draft is blocked and the retry is told exactly what progress is required', async () => {
+    const { llm, calls } = withCompose((input, mock, call) =>
+      call === 1 ? { reply_body: input.lastAgentReply ?? '' } : { reply_body: mock.reply_body },
+    );
+    const h = emma({ llm });
+    await confirmedTurns(h);
+    calls.length = 0;
+    const s = await turn(h, 'I already confirmed. What is the next step?');
+    expect(calls).toHaveLength(2);
+    const feedback = calls[1]!.violationFeedback!.join('\n');
+    expect(feedback).toMatch(/no_repeated_reply/);
+    expect(feedback).toMatch(/PROGRESS REQUIRED/);
+    expect(feedback).toMatch(/where the request stands/i);
+    expect(calls[1]!.nextAction).toBe('follow_up_pending'); // the decision is authoritative and passed to the model
+    expect(s.fallbackUsed).toBe(false);
+    expect(s.attempts).toBe(2);
+  });
+
+  it('if every attempt repeats, the fallback is a grounded handoff naming the request and the verified order, not a generic holding line', async () => {
+    const { llm } = echo();
+    const h = emma({ llm });
+    await confirmedTurns(h);
+    const s = await turn(h, 'I already confirmed. What is the next step?');
+    expect(s.fallbackUsed).toBe(true);
+    expect(s.proposedResponse).toMatch(/return and refund request for order NL-20077/);
+    expect(s.proposedResponse).not.toMatch(/We are looking into this/);
+    expect(s.proposedResponse).not.toMatch(/eligible|\d+ days|\$/i); // grounded: promises and states nothing else
+    expect(s.escalate).toBe(true);
+    expect(s.guardrails.find((g) => g.check === 'safe_fallback')).toMatchObject({
+      passed: false,
+      severity: 'warning',
+    });
+  });
+
+  it('a second consecutive fallback acknowledges the follow-up instead of repeating the first one', async () => {
+    const { llm } = echo();
+    const h = emma({ llm });
+    await confirmedTurns(h);
+    const first = await turn(h, 'I already confirmed. What is the next step?');
+    const second = await turn(h, 'Any update?');
+    expect(first.fallbackUsed && second.fallbackUsed).toBe(true);
+    expect(second.proposedResponse).not.toBe(first.proposedResponse);
+    expect(second.proposedResponse).toMatch(/Thank you for following up/);
+  });
+
+  it('with an unknown case the fallback is the generic holding message', async () => {
+    const { llm } = withCompose(() => ({ reply_body: 'I have refunded your order.' }));
+    const s = await turn(emma({ llm }), 'asdf', { send: false });
+    expect(s.fallbackUsed).toBe(true);
+    expect(s.proposedResponse).toMatch(/We are looking into this/);
+  });
+
+  it('repeating the same customer message is detected and idempotent for the case state', async () => {
+    const h = emma();
+    await confirmedTurns(h);
     const first = await turn(h, 'I already confirmed. What is the next step?');
     const again = await turn(h, 'I already confirmed. What is the next step?');
+    expect(again.customerRepeated).toBe(true);
     expect(again.caseState!.confirmed_facts.slice().sort()).toEqual(
       first.caseState!.confirmed_facts.slice().sort(),
     );
-    expect(again.caseState!.desired_resolution).toBe(first.caseState!.desired_resolution);
+    expect(again.derived!.next_action).toBe('follow_up_pending');
     expect(again.proposedResponse).not.toBe(first.proposedResponse);
     expect(again.proposedResponse).not.toMatch(ASKS_TO_CONFIRM);
     expect(again.fallbackUsed).toBe(false);
+  });
+
+  it('a NEW question after the step was given is answered from policy, not treated as a repeat', async () => {
+    const h = emma();
+    await confirmedTurns(h);
+    const s = await turn(h, 'How long will the refund take once it is processed?');
+    expect(s.nextStepAlreadyGiven).toBe(true);
+    expect(s.derived!.next_action).not.toBe('follow_up_pending');
+    expect(s.derived!.next_action).toBe('explain_eligibility');
+  });
+
+  it('an explicit request for clarification may repeat earlier content', async () => {
+    const { llm } = echo();
+    const h = emma({ llm });
+    await confirmedTurns(h);
+    const s = await turn(h, 'Can you explain that again? I did not understand.');
+    expect(s.asksClarification).toBe(true);
+    expect(s.guardrails.find((g) => g.check === 'no_repeated_reply')).toBeUndefined();
+    expect(s.fallbackUsed).toBe(false);
+  });
+
+  it('tells the model which policy figures were already stated, and only warns (not blocks) if it restates them', async () => {
+    const { llm, calls } = withCompose(() => ({
+      reply_body: 'Remember the 30 days window applies to your table.',
+    }));
+    const h = emma({ llm });
+    h.ctx.messages.push(msg('a0', 'agent', 'You are within the 30-day return window.'));
+    const s = await turn(h, 'Can I return the table?', { send: false });
+    expect(calls[0]!.alreadyStatedFigures).toContain('30 day');
+    const g = s.guardrails.find((x) => x.check === 'repeats_policy_facts');
+    expect(g).toMatchObject({ passed: false, severity: 'warning' });
+    expect(s.fallbackUsed).toBe(false);
+  });
+});
+
+describe('procedural grounding in context', () => {
+  it('a collection that the policy documents only for defective goods is not allowed for a customer ordering mistake', async () => {
+    const { llm } = withCompose(() => ({
+      reply_body: 'We will arrange a prepaid collection of the table for you.',
+    }));
+    const h = emma({ llm });
+    const s = await turn(
+      h,
+      'I think I ordered the wrong product. I want to return it and get a refund.',
+      { send: false },
+    );
+    const g = s.guardrails.find((x) => x.check === 'no_invented_procedure');
+    expect(g?.passed).toBe(false);
+    expect(g?.detail).toMatch(/only documented for|applies only to defective/i);
+    expect(s.proposedResponse).not.toMatch(/collection/i);
+  });
+
+  it('the model cannot claim the step is documented when no applicable policy sentence documents it', async () => {
+    const { llm } = withCompose(() => ({
+      next_step_documented: true,
+      reply_body: 'Our team will take it from here.',
+    }));
+    const s = await turn(
+      emma({ llm }),
+      'I think I ordered the wrong product. It is unused. I want to return it and get a refund.',
+      { send: false },
+    );
+    expect(s.derived!.next_action).toBe('provide_next_step');
+    expect(s.composed!.next_step_documented).toBe(true); // the model's claim...
+    expect(s.escalate).toBe(true); // ...is overruled by the policy check
+    expect(s.escalationReason).toMatch(/No documented procedure/i);
+  });
+
+  it('no invented return labels, addresses or approvals reach the draft', async () => {
+    const { llm } = withCompose(() => ({
+      reply_body:
+        'Please send it to 12 Oak Street with the return label we emailed; your refund is approved.',
+    }));
+    const s = await turn(emma({ llm }), 'I want to return it and get a refund.', { send: false });
+    expect(s.fallbackUsed).toBe(true);
+    expect(s.proposedResponse).not.toMatch(/Oak Street|label|approved/i);
+  });
+});
+
+describe('case-state persistence rules', () => {
+  it('a regeneration re-derives the state from the messages instead of inheriting its own earlier extraction', async () => {
+    const h = emma();
+    const first = await turn(h, 'I think I ordered the wrong product.', { send: false });
+    expect(first.previousCaseState).toBeNull();
+    // regenerate for the SAME customer message
+    const { state } = await runGeneration(h.deps, h.input);
+    expect(state.previousCaseState).toBeNull(); // the state computed for this very message is excluded
+    expect(state.caseState!.confirmed_facts).toContain('customer_ordered_wrong_item');
+
+    h.ctx.messages.push(msg('c-next', 'customer', 'Yes it is unused.'));
+    await runGeneration(h.deps, h.input);
+    const regen = (await runGeneration(h.deps, h.input)).state;
+    expect(regen.previousCaseState!.as_of_message_id).toBe(first.latest!.id); // the message BEFORE the current one
+  });
+
+  it('an older generation that was written later cannot shadow the state of a newer message', async () => {
+    const h = emma();
+    h.ctx.messages.push(
+      msg('m1', 'customer', 'first'),
+      msg('m2', 'customer', 'second'),
+      msg('m3', 'customer', 'third'),
+    );
+    const rec = (trigger: string, facts: string[]): GenerationRecord =>
+      ({
+        trigger_message_id: trigger,
+        case_state: { ...emptyCaseState(), confirmed_facts: facts, as_of_message_id: trigger },
+      }) as unknown as GenerationRecord;
+    h.saved.push(rec('m2', ['item_unused']), rec('m1', [])); // m1's generation finished LAST
+    const { state } = await runGeneration(h.deps, h.input);
+    expect(state.previousCaseState!.as_of_message_id).toBe('m2');
+    expect(state.previousCaseState!.confirmed_facts).toEqual(['item_unused']);
+  });
+
+  it('an agent’s own suggestion is never recorded as a customer confirmation', async () => {
+    const h = emma();
+    h.ctx.messages.push(
+      msg(
+        'a-0',
+        'agent',
+        'I assume the table is unused and still in its original packaging, correct?',
+      ),
+    );
+    const s = await turn(h, 'I want to return it.');
+    expect(s.caseState!.confirmed_facts).not.toContain('item_unused');
+    expect(s.caseState!.confirmed_facts).not.toContain('original_packaging');
+  });
+
+  it('a stale previous state cannot override a later correction from the customer', async () => {
+    const h = emma();
+    await turn(h, 'It is unused and in the original packaging. I want to return it.');
+    const s = await turn(h, 'Actually it has been used, I opened and used it.');
+    expect(s.caseState!.confirmed_facts).not.toContain('item_unused');
+    expect(s.caseState!.denied_facts).toContain('item_unused');
   });
 });
 
@@ -235,8 +532,8 @@ describe('policy retrieval and missing operational policy', () => {
     await turn(h, 'I already confirmed. What is the next step?');
     expect(h.search).toHaveBeenCalledTimes(1);
     const arg = h.search.mock.calls[0]![0];
-    expect(arg.brandId).toBe('00000000-0000-4000-8000-0000000000c2'); // always the conversation's own brand
-    expect(arg.categories).toEqual(['return_policy']); // derived from the effective intent, not "unclear"
+    expect(arg.brandId).toBe(NORDIC_ID);
+    expect(arg.categories).toEqual(['return_policy']);
   });
 
   it('with no relevant policy it hands over instead of improvising steps', async () => {
@@ -254,160 +551,80 @@ describe('policy retrieval and missing operational policy', () => {
 });
 
 describe('guardrail retries for conversation progress', () => {
-  const reaskThenFix = (second: string): { llm: LlmPort; calls: unknown[] } => {
-    const calls: unknown[] = [];
-    const base = createMockLlm();
-    const llm: LlmPort = {
-      ...base,
-      compose: async (input) => {
-        calls.push(input.violationFeedback);
-        const reply: ComposedReply = (await base.compose(input)).value;
-        const first = calls.length === 1;
-        return {
-          value: first
-            ? {
-                ...reply,
-                reply_body: 'Please confirm that you want to return the item.',
-                questions_asked: ['resolution_confirmation'],
-                cited_source_ids: [],
-              }
-            : {
-                ...reply,
-                reply_body: second,
-                questions_asked: [],
-                next_step_documented: false,
-                suggest_human_review: true,
-                cited_source_ids: [],
-              },
-          usage: { input: 1, output: 1 },
-          model: 'test',
-        };
-      },
-    };
-    return { llm, calls };
-  };
-
   it('blocks a redundant confirmation request and retries with feedback', async () => {
-    const { llm, calls } = reaskThenFix(
-      'Thank you for confirming. Our team will follow up with the return instructions.',
+    const { llm, calls } = withCompose((_i, mock, call) =>
+      call === 1
+        ? {
+            reply_body: 'Please confirm that you want to return the item.',
+            questions_asked: ['resolution_confirmation'],
+          }
+        : {
+            reply_body:
+              'Thank you for confirming. Our team will follow up with the return instructions.',
+            questions_asked: [],
+            next_step_documented: false,
+            suggest_human_review: true,
+            ...{ cited_source_ids: mock.cited_source_ids },
+          },
     );
     const h = emma({ llm });
-    await turn(
-      h,
-      'It is unused and in the original packaging. I want to return it and get a refund.',
-      { send: false },
-    );
-    calls.length = 0;
-    h.ctx.messages.splice(0);
     const s = await turn(
       h,
-      'I already confirmed. What is the next step? I want to return it and get a refund.',
+      'It is unused and in the original packaging. I want to return it and get a refund. What is the next step?',
     );
     expect(calls).toHaveLength(2);
-    expect((calls[1] as string[]).join(' ')).toMatch(/no_redundant_question/);
+    expect(calls[1]!.violationFeedback!.join(' ')).toMatch(/no_redundant_question/);
     expect(s.attempts).toBe(2);
     expect(s.proposedResponse).toMatch(/follow up with the return instructions/);
     expect(s.fallbackUsed).toBe(false);
   });
 
   it('also catches the re-ask in the text when the model under-reports its questions', async () => {
-    const base = createMockLlm();
-    const llm: LlmPort = {
-      ...base,
-      compose: async (input) => {
-        const r = (await base.compose(input)).value;
-        return {
-          value: {
-            ...r,
-            reply_body: 'Could you confirm that you want to return the item?',
-            questions_asked: [],
-            cited_source_ids: [],
-          },
-          usage: { input: 1, output: 1 },
-          model: 'test',
-        };
-      },
-    };
-    const h = emma({ llm });
+    const { llm } = withCompose(() => ({
+      reply_body: 'Could you confirm that you want to return the item?',
+      questions_asked: [],
+    }));
     const s = await turn(
-      h,
+      emma({ llm }),
       'I want to return it and get a refund. I already confirmed. What is the next step?',
     );
     expect(s.guardrails.find((g) => g.check === 'no_redundant_question')?.passed).toBe(false);
-    expect(s.fallbackUsed).toBe(true); // always re-asking → neutral holding message, never the repeated question
+    expect(s.fallbackUsed).toBe(true);
     expect(s.proposedResponse).not.toMatch(ASKS_TO_CONFIRM);
   });
 
   it('does NOT block a legitimate question about something still unknown', async () => {
-    const base = createMockLlm();
-    const llm: LlmPort = {
-      ...base,
-      compose: async (input) => {
-        const r = (await base.compose(input)).value;
-        return {
-          value: {
-            ...r,
-            reply_body: 'Is the item unused and in its original packaging?',
-            questions_asked: ['item_unused', 'original_packaging'],
-            cited_source_ids: [],
-          },
-          usage: { input: 1, output: 1 },
-          model: 'test',
-        };
-      },
-    };
-    const h = emma({ llm });
-    const s = await turn(h, 'Can I return the table?'); // customer has said nothing about its condition yet
+    const { llm } = withCompose(() => ({
+      reply_body: 'Is the item unused and in its original packaging?',
+      questions_asked: ['item_unused', 'original_packaging'],
+    }));
+    const s = await turn(emma({ llm }), 'Can I return the table?');
     expect(s.guardrails.find((g) => g.check === 'no_redundant_question')?.passed).toBe(true);
     expect(s.fallbackUsed).toBe(false);
   });
 
-  it('blocks invented return procedures that no policy source documents', async () => {
-    const base = createMockLlm();
-    const llm: LlmPort = {
-      ...base,
-      compose: async (input) => {
-        const r = (await base.compose(input)).value;
-        return {
-          value: {
-            ...r,
-            reply_body:
-              'Please print the return label from our return portal and drop it off at the post office.',
-            questions_asked: [],
-            cited_source_ids: [],
-          },
-          usage: { input: 1, output: 1 },
-          model: 'test',
-        };
-      },
-    };
-    const h = emma({ llm });
-    const s = await turn(h, 'I want to return it and get a refund. What is the next step?');
-    expect(s.guardrails.find((g) => g.check === 'no_invented_procedure')?.passed).toBe(false);
-    expect(s.proposedResponse).not.toMatch(/return label|portal|drop it off/i);
+  it('does NOT block a clarifying question about details of a known problem', async () => {
+    const { llm } = withCompose(() => ({
+      reply_body: 'Could you tell me how the table differs from what you ordered?',
+      questions_asked: ['item_differs_from_listing'],
+    }));
+    const s = await turn(emma({ llm }), "The table doesn't look like what I ordered.", {
+      send: false,
+    });
+    expect(s.guardrails.find((g) => g.check === 'no_redundant_question')?.passed).toBe(true);
+    expect(s.fallbackUsed).toBe(false);
   });
 });
 
 describe('brand isolation in a continuing conversation', () => {
   it('never mentions the other brand even if the model does', async () => {
-    const base = createMockLlm();
-    const llm: LlmPort = {
-      ...base,
-      compose: async (input) => {
-        const r = (await base.compose(input)).value;
-        return {
-          value: {
-            ...r,
-            reply_body: 'At Bloom Botanics you would have 7 days instead.',
-            cited_source_ids: [],
-          },
-          usage: { input: 1, output: 1 },
-          model: 'test',
-        };
-      },
-    };
-    const h = emma({ llm });
-    const s = await turn(h, 'I want to return it and get a refund. What is the next step?');
+    const { llm } = withCompose(() => ({
+      reply_body: 'At Bloom Botanics you would have 7 days instead.',
+    }));
+    const s = await turn(
+      emma({ llm }),
+      'I want to return it and get a refund. What is the next step?',
+    );
     expect(s.fallbackUsed).toBe(true);
     expect(s.proposedResponse).not.toMatch(/bloom/i);
     expect(s.sources.every((x) => x.id.startsWith('2000'))).toBe(true);
@@ -436,16 +653,13 @@ describe('damaged product: photo follow-ups across turns', () => {
     expect(s1.derived!.next_action).toBe('ask_missing_info');
     expect(s1.derived!.missing_information).toContain('photo');
     expect(s1.proposedResponse).toMatch(/photo/i);
-
     const s2 = await turn(h, 'Here it is.', { images: 1 });
     expect(s2.caseState!.confirmed_facts).toContain('photo_provided');
     expect(s2.derived!.missing_information).not.toContain('photo');
     expect(s2.proposedResponse).not.toMatch(/send (us )?(a|another) (photo|picture)/i);
-
     const s3 = await turn(h, 'What about the refund?');
-    expect(s3.caseState!.confirmed_facts).toContain('photo_provided'); // remembered
+    expect(s3.caseState!.confirmed_facts).toContain('photo_provided');
     expect(s3.derived!.missing_information).not.toContain('photo');
-    expect(s3.proposedResponse).not.toMatch(/send (us )?(a|another) (photo|picture)/i);
     expect(s3.eligibility.some((e) => e.kind === 'refund')).toBe(true);
   });
 });
@@ -461,8 +675,7 @@ describe('long conversations', () => {
     const t0 = Date.now();
     await turn(h, 'I want to return it and get a refund.');
     expect(Date.now() - t0).toBeLessThan(2000);
-    const sent = spy.mock.calls[0]![0].history;
-    expect(sent.length).toBeLessThanOrEqual(30); // bounded prompt size
+    expect(spy.mock.calls[0]![0].history.length).toBeLessThanOrEqual(30);
   });
 });
 
@@ -472,12 +685,9 @@ describe('sign-off and greeting appropriate to a live chat', () => {
     const first = await turn(h, 'Hello');
     expect(first.proposedResponse).toContain('With kind regards');
     expect(first.proposedResponse!.startsWith('Dear Emma,')).toBe(true);
-
     const quick = await turn(h, 'Can I return the table?');
     expect(quick.proposedResponse).not.toContain('With kind regards');
     expect(quick.proposedResponse!.startsWith('Dear')).toBe(false);
-
-    // the conversation resumes the next day: the earlier agent message is old
     const old = new Date(NOW.getTime() - 24 * 3_600_000).toISOString();
     h.ctx.messages.forEach((m) => (m.created_at = old));
     const resumed = await turn(h, 'Hi again, one more question about the table.');

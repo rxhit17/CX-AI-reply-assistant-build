@@ -16,6 +16,7 @@ const upd = (over: Partial<CaseUpdate> = {}): CaseUpdate => ({
   desired_resolution: 'unknown',
   resolution_confirmed: false,
   asks_next_step: false,
+  asks_clarification: false,
   corrections: [],
   ...over,
 });
@@ -46,7 +47,11 @@ describe('mergeCaseState', () => {
     let s = mergeCaseState(null, upd({ confirmed_facts: ['item_damaged'] }), 'm1');
     s = mergeCaseState(
       s,
-      upd({ retracted_facts: ['item_damaged'], corrections: ['it was not damaged after all'] }),
+      upd({
+        issue_type: 'return',
+        retracted_facts: ['item_damaged'],
+        corrections: ['it was not damaged after all'],
+      }),
       'm2',
     );
     expect(s.confirmed_facts).toEqual([]);
@@ -153,5 +158,162 @@ describe('answeredTopics: legitimate clarifications stay possible', () => {
       'm1',
     );
     expect([...answeredTopics(s, { orderLinked: false, customerSentImage: false })]).toEqual([]);
+  });
+});
+
+describe('desired resolution: no silent narrowing', () => {
+  const both = () =>
+    mergeCaseState(
+      null,
+      upd({ desired_resolution: 'return_and_refund', resolution_confirmed: true }),
+      'm1',
+    );
+
+  it('talking about only one half does not drop the other', () => {
+    const s = mergeCaseState(
+      both(),
+      upd({ desired_resolution: 'return', asks_next_step: true }),
+      'm2',
+    );
+    expect(s.desired_resolution).toBe('return_and_refund');
+    expect(s.resolution_confirmed).toBe(true);
+  });
+  it('an explicit correction can narrow it', () => {
+    const s = mergeCaseState(
+      both(),
+      upd({
+        desired_resolution: 'refund',
+        resolution_confirmed: true,
+        corrections: ['customer now only wants the money back'],
+      }),
+      'm2',
+    );
+    expect(s.desired_resolution).toBe('refund');
+  });
+  it('widening and switching still work', () => {
+    const s = mergeCaseState(
+      mergeCaseState(null, upd({ desired_resolution: 'return', resolution_confirmed: true }), 'm1'),
+      upd({ desired_resolution: 'return_and_refund' }),
+      'm2',
+    );
+    expect(s.desired_resolution).toBe('return_and_refund');
+    expect(
+      mergeCaseState(both(), upd({ desired_resolution: 'exchange' }), 'm3').desired_resolution,
+    ).toBe('exchange');
+  });
+});
+
+describe('retractions need a stated correction', () => {
+  const known = () =>
+    mergeCaseState(
+      null,
+      upd({ confirmed_facts: ['customer_ordered_wrong_item', 'item_unused'] }),
+      'm1',
+    );
+
+  it('a stray retraction on an unrelated message does not erase a fact the customer never withdrew', () => {
+    const s = mergeCaseState(
+      known(),
+      upd({
+        retracted_facts: ['customer_ordered_wrong_item'],
+        desired_resolution: 'return_and_refund',
+        resolution_confirmed: true,
+      }),
+      'm2',
+    );
+    expect(s.confirmed_facts).toEqual(
+      expect.arrayContaining(['customer_ordered_wrong_item', 'item_unused']),
+    );
+  });
+  it('a retraction with a correction note AND a replacement is applied', () => {
+    const s = mergeCaseState(
+      known(),
+      upd({
+        issue_type: 'mismatch',
+        confirmed_facts: ['item_differs_from_listing'],
+        retracted_facts: ['customer_ordered_wrong_item'],
+        corrections: ['customer says the seller sent the wrong item'],
+      }),
+      'm2',
+    );
+    expect(s.confirmed_facts).not.toContain('customer_ordered_wrong_item');
+    expect(s.confirmed_facts).toContain('item_differs_from_listing');
+  });
+  it('a retraction with a note but NOTHING replacing it is ignored (stray retraction seen with the live model)', () => {
+    const s = mergeCaseState(
+      known(),
+      upd({
+        retracted_facts: ['customer_ordered_wrong_item'],
+        corrections: ['customer now wants a refund too'],
+        desired_resolution: 'return_and_refund',
+      }),
+      'm2',
+    );
+    expect(s.confirmed_facts).toContain('customer_ordered_wrong_item');
+  });
+  it('an explicit denial needs no correction note', () => {
+    const s = mergeCaseState(known(), upd({ denied_facts: ['item_unused'] }), 'm2');
+    expect(s.confirmed_facts).not.toContain('item_unused');
+    expect(s.denied_facts).toContain('item_unused');
+  });
+});
+
+describe('retractions are judged per fact and by kind', () => {
+  const known = () =>
+    mergeCaseState(
+      null,
+      upd({ issue_type: 'return', confirmed_facts: ['customer_ordered_wrong_item'] }),
+      'm1',
+    );
+
+  it('confirming UNRELATED facts never justifies withdrawing the reason for the case (live-model failure)', () => {
+    const s = mergeCaseState(
+      known(),
+      upd({
+        issue_type: 'return',
+        confirmed_facts: ['item_unused', 'original_packaging'],
+        retracted_facts: ['customer_ordered_wrong_item'],
+        corrections: ['customer confirmed condition'],
+      }),
+      'm2',
+    );
+    expect(s.confirmed_facts).toContain('customer_ordered_wrong_item');
+  });
+  it('return/refund/exchange drift is not a change of issue', () => {
+    const s = mergeCaseState(
+      known(),
+      upd({
+        issue_type: 'refund',
+        retracted_facts: ['customer_ordered_wrong_item'],
+        corrections: ['wants a refund'],
+      }),
+      'm2',
+    );
+    expect(s.confirmed_facts).toContain('customer_ordered_wrong_item');
+  });
+  it('a genuine correction (different cause confirmed) replaces the old cause', () => {
+    const s = mergeCaseState(
+      known(),
+      upd({
+        issue_type: 'return',
+        confirmed_facts: ['item_damaged'],
+        retracted_facts: ['customer_ordered_wrong_item'],
+        corrections: ['it actually arrived damaged'],
+      }),
+      'm2',
+    );
+    expect(s.confirmed_facts).toEqual(['item_damaged']);
+  });
+  it('a material change of issue also counts', () => {
+    const s = mergeCaseState(
+      known(),
+      upd({
+        issue_type: 'mismatch',
+        retracted_facts: ['customer_ordered_wrong_item'],
+        corrections: ['seller sent the wrong item'],
+      }),
+      'm2',
+    );
+    expect(s.confirmed_facts).not.toContain('customer_ordered_wrong_item');
   });
 });

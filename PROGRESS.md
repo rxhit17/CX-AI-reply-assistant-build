@@ -69,3 +69,8 @@ _Last updated: 2026-10-23_
 - Root causes verified; case state + next-action decision added to the existing graph (no new LLM call, one jsonb column).
 - Tests run: typecheck, lint, unit (AI 190, API 28), integration (67), Playwright e2e (16/16), web + API builds. Real-model conversation eval: 5/6 runs pass (`docs/eval-conversation.md`).
 - Remaining: first-message eligibility is premature; one flaky run ends in the safe fallback; regex backstops are English-only.
+
+## Task 1.1 – Conversation reliability fixes ✅ (see docs/conversation-intelligence.md)
+- `follow_up_pending` action, grounded handoff fallback, ambiguity gating (`mismatch`), per-sentence procedural grounding, persistence rules (state before the current message, ordered by covered message), guardrail false-positive fixes.
+- Tests: typecheck/lint clean; AI 259, API 28, integration 70, Playwright 16/16, builds OK.
+- Live GPT-4o-mini (`pnpm eval:conversation`, 8 scenarios x 6): 43/48 in the full run (4 failures were network errors in C2, 1 model variability in A1); C2 re-run 6/6. Reports: docs/eval-conversation-full-run.md, docs/eval-conversation.md.

@@ -224,8 +224,9 @@ describe('guardrail loop', () => {
     expect(state.attempts).toBe(2);
     expect(state.fallbackUsed).toBe(true);
     const rec = h.saved[0]!;
-    expect(rec.body).toContain('We are looking into this');
-    expect(rec.body).not.toMatch(/refunded|coupon/);
+    // the case is understood (a refund request on a known order), so the fallback names it instead of a generic line
+    expect(rec.body).toContain('passing your refund request for order BB-10041 to our team');
+    expect(rec.body).not.toMatch(/refunded|coupon|eligible/);
     expect(rec.escalate).toBe(true);
     expect(rec.guardrails.find((g) => g.check === 'safe_fallback')).toMatchObject({
       passed: false,

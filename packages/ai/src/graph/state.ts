@@ -17,6 +17,7 @@ import type { RetrievalResult } from '../retrieval.js';
 export interface SourceRef {
   id: string;
   label: string;
+  category: string | null;
   title: string;
   version: number;
   content: string;
@@ -75,6 +76,12 @@ export const GenerationState = Annotation.Root({
   previousCaseState: withDefault<PersistedCaseState | null>(null),
   caseState: withDefault<CaseState | null>(null),
   asksNextStep: withDefault<boolean>(false),
+  asksClarification: withDefault<boolean>(false),
+  customerRepeated: withDefault<boolean>(false),
+  /** An agent already gave the next step / handoff for the open case (derived from the message history). */
+  nextStepAlreadyGiven: withDefault<boolean>(false),
+  /** Policy figures agents already stated earlier in this conversation. */
+  previouslyStatedFigures: withDefault<string[]>([]),
   lastAgentReply: withDefault<string | null>(null),
   lastAgentAt: withDefault<string | null>(null),
   effectiveIntent: withDefault<Intent | null>(null),

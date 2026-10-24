@@ -4,12 +4,15 @@
  * as a normal draft (the graph retries once, then falls back safely).
  */
 import type { Eligibility, GuardrailResult } from '@cx/shared';
+import { findUnauthorizedProcedures } from './procedure.js';
 import type { DeliveryEstimate, OrderFacts } from './policy/rules.js';
 
 export interface GuardrailSource {
   id: string;
   title: string;
   content: string;
+  /** KB category; used to scope procedures (a damage policy only applies to damaged goods). */
+  category?: string;
 }
 
 export interface GuardrailInput {
@@ -47,6 +50,17 @@ export interface GuardrailInput {
   answeredTopics?: string[];
   /** The previous agent reply, to catch a draft that repeats it. */
   lastAgentReply?: string | null;
+  /** The customer explicitly asked for an explanation again, so repeating earlier content is legitimate. */
+  allowRepeat?: boolean;
+  /** Policy figures an agent already stated earlier in this conversation (normalised, see statedFigures). */
+  previouslyStatedFigures?: string[];
+  /** The case genuinely involves a defect or damage (customer statement or a damage eligibility result). */
+  caseHasDefect?: boolean;
+  /**
+   * False while the customer has only reported a problem and nobody has asked for (or the case does not call for) a
+   * return/refund/cancellation outcome. Eligibility must not be asserted then. Default true.
+   */
+  eligibilityTopicOpen?: boolean;
 }
 
 const pass = (
@@ -82,15 +96,56 @@ const REFUND_PROMISE = [
   /\b(full|guaranteed|100%)\s+refund\b/i,
   /\b(reembolsaremos|devolveremos|rembourserons|vous rembourser|te reembolsar)/i,
 ];
-const ENTITLEMENT_CLAIM =
-  /\b(you('|’)?re|you are|you qualify|you do qualify|you('|’)?re entitled|you are entitled|eligible)\b[^.!?\n]{0,40}\b(refund|return|replacement|cancel)/gi;
-const NEGATION = /\b(not|n't|n’t|no longer|never|cannot|unable|ineligible)\b/i;
+/**
+ * Words that actually ASSERT an entitlement. A bare "you are" / "you're" is not one: "you're looking for a refund"
+ * or "you are asking about a return" describe the request, they do not promise anything.
+ */
+const ENTITLEMENT_WORDS = String.raw`eligible|entitled|qualif(?:y|ies|ied)|(?:you|you(?:'|’)?re|you are) (?:can|may|are able to|(?:'|’)?re able to|are allowed to|(?:'|’)?re allowed to) (?:return|get|claim|receive|obtain)`;
+const NEGATION = /\b(not|no longer|never|cannot|unable|ineligible)\b|n['’]t\b/i;
+
+const entitlementPattern = (noun: string) =>
+  new RegExp(String.raw`\b(${ENTITLEMENT_WORDS})\b[^.!?\n]{0,40}\b(${noun})`, 'gi');
+
+/** Does the text affirmatively say the customer is eligible for / entitled to <noun>? Negated statements are ignored. */
+function claimsEntitlementTo(text: string, noun: string): boolean {
+  return [...text.matchAll(entitlementPattern(noun))].some((m) => {
+    const at = m.index ?? 0;
+    // negation anywhere earlier in the SAME sentence ("you are not eligible…", "you can't return…") cancels the claim
+    const sentenceStart = Math.max(
+      text.lastIndexOf('.', at) + 1,
+      text.lastIndexOf('!', at) + 1,
+      text.lastIndexOf('?', at) + 1,
+      text.lastIndexOf('\n', at) + 1,
+    );
+    return !NEGATION.test(text.slice(sentenceStart, at + m[0].length));
+  });
+}
 
 /** True when the text affirmatively says the customer qualifies ("you are eligible…"), ignoring negated statements. */
 function claimsEntitlement(text: string): boolean {
-  return [...text.matchAll(ENTITLEMENT_CLAIM)].some((m) => !NEGATION.test(m[0]));
+  return claimsEntitlementTo(text, 'refund|return|replacement|cancel');
 }
 const GUARANTEE = /\b(guarantee[ds]?|i promise|we promise|definitely will|100% sure)\b/i;
+const GUARANTEE_ALL = /\b(guarantee[ds]?|i promise|we promise|definitely will|100% sure)\b/gi;
+const DISCLAIMER = /\b(not|no|cannot|never|without|unable)\b|n['’]t\b/i;
+
+/**
+ * A guarantee is only a problem when it is ASSERTED. "I can't guarantee an outcome", "this does not guarantee a
+ * refund" and "there is no guarantee" are the honest disclaimers we want, so a negation earlier in the same
+ * sentence cancels the match.
+ */
+function assertsGuarantee(text: string): boolean {
+  return [...text.matchAll(GUARANTEE_ALL)].some((m) => {
+    const at = m.index ?? 0;
+    const sentenceStart = Math.max(
+      text.lastIndexOf('.', at) + 1,
+      text.lastIndexOf('!', at) + 1,
+      text.lastIndexOf('?', at) + 1,
+      text.lastIndexOf('\n', at) + 1,
+    );
+    return !DISCLAIMER.test(text.slice(sentenceStart, at + m[0].length));
+  });
+}
 const DISCOUNT =
   /(\bdiscount\b|\bcoupon\b|\bpromo(tion(al)?)? code\b|\bvoucher\b|\b\d{1,2}\s?% off\b|\bfree gift\b|\bstore credit\b|\bcomplimentary upgrade\b)/i;
 
@@ -111,9 +166,17 @@ const REASKS: Record<string, RegExp> = {
     /\b(is|was)\s+(it|the\s+(item|product))\b[^.?!]{0,25}\boriginal packaging\b|\bconfirm\b[^.?!]{0,40}\bpackaging\b|\bdo you still have the (original )?(packaging|box)\b/i,
 };
 
-/** Operational-procedure terms. A reply may only use them if the policy sources use them too. */
-const PROCEDURE_TERMS =
-  /\b(return label|shipping label|prepaid label|rma|return authori[sz]ation|return portal|return form|drop[- ]?off|pick[- ]?up|collection|courier|qr code|return address|tracking number)\b/gi;
+/** Normalised "n unit" / "$n" tokens, used to notice a reply restating a policy figure it already gave. */
+export function statedFigures(text: string): string[] {
+  const out = new Set<string>();
+  for (const m of text.matchAll(
+    /(\d{1,3}(?:[.,]\d+)?)\s*[- ]?\s*(business\s+days?|working\s+days?|days?|hours?|weeks?)\b/gi,
+  )) {
+    out.add(`${m[1]} ${m[2]!.toLowerCase().replace(/s$/, '').replace(/\s+/g, ' ')}`);
+  }
+  for (const m of text.matchAll(/[$€£]\s?(\d{1,6}(?:[.,]\d{1,2})?)/g)) out.add(`$${m[1]}`);
+  return [...out];
+}
 
 const words = (t: string) => new Set(t.toLowerCase().match(/[\p{L}\p{N}']+/gu) ?? []);
 function similarity(a: string, b: string): number {
@@ -302,8 +365,7 @@ export function validateDraft(input: GuardrailInput): GuardrailResult[] {
     if (
       (e.kind === 'refund' || e.kind === 'return') &&
       e.outcome === 'ineligible' &&
-      ENTITLEMENT_CLAIM.test(text) &&
-      !/\b(not|n't|no longer|cannot|can't|unable|outside|passed|expired)\b/i.test(text)
+      claimsEntitlementTo(text, e.kind === 'refund' ? 'refund' : 'return|exchange')
     ) {
       out.push(
         fail(
@@ -315,7 +377,7 @@ export function validateDraft(input: GuardrailInput): GuardrailResult[] {
     }
   }
   out.push(
-    GUARANTEE.test(text) && !GUARANTEE.test(sourceText)
+    assertsGuarantee(text) && !GUARANTEE.test(sourceText)
       ? fail(
           'no_guarantees',
           'blocking',
@@ -405,7 +467,7 @@ export function validateDraft(input: GuardrailInput): GuardrailResult[] {
         )
       : pass('no_redundant_question'),
   );
-  if (input.lastAgentReply) {
+  if (input.lastAgentReply && !input.allowRepeat) {
     const sim = similarity(text, input.lastAgentReply);
     out.push(
       sim >= 0.85
@@ -417,15 +479,75 @@ export function validateDraft(input: GuardrailInput): GuardrailResult[] {
         : pass('no_repeated_reply'),
     );
   }
-  const invented = [
-    ...new Set((text.match(PROCEDURE_TERMS) ?? []).map((m) => m.toLowerCase())),
-  ].filter((term) => !new RegExp(term.replace(/[-\s]/g, '[-\\s]?'), 'i').test(sourceText));
+  // Policy facts the customer has already been given are not restated unless they ask for it (advisory).
+  if (!input.allowRepeat && input.previouslyStatedFigures?.length) {
+    const again = statedFigures(text).filter((f) => input.previouslyStatedFigures!.includes(f));
+    if (again.length) {
+      out.push(
+        fail(
+          'repeats_policy_facts',
+          'warning',
+          `The draft restates policy figures an agent already gave (${again.join(', ')}); lead with the next step instead.`,
+        ),
+      );
+    }
+  }
+
+  // --- eligibility must be requested, verified and specific -------------------------------------------------------------
+  const claimsReturn = claimsEntitlementTo(text, 'return|exchange');
+  const claimsRefund = claimsEntitlementTo(text, 'refund');
+  const eligibleKinds = new Set(
+    input.eligibility.filter((e) => e.outcome === 'eligible').map((e) => e.kind),
+  );
+  const damageEligible = eligibleKinds.has('damage');
+  const unsupported = [
+    claimsReturn && !eligibleKinds.has('return') && !damageEligible ? 'return' : null,
+    claimsRefund && !eligibleKinds.has('refund') && !damageEligible ? 'refund' : null,
+  ].filter(Boolean);
   out.push(
-    invented.length
+    unsupported.length
+      ? fail(
+          'eligibility_claim_supported',
+          'blocking',
+          `The draft says the customer is eligible for a ${unsupported.join(' / ')} but no verified eligibility check supports it.`,
+        )
+      : pass('eligibility_claim_supported'),
+  );
+  if (input.eligibilityTopicOpen === false) {
+    const asserted =
+      claimsEntitlement(text) ||
+      claimsReturn ||
+      claimsRefund ||
+      /\bwithin (the |our )?\d+[- ]day (return|refund)\b|\b(return|refund) window (ends|closes|is)\b/i.test(
+        text,
+      );
+    out.push(
+      asserted
+        ? fail(
+            'no_unrequested_eligibility',
+            'blocking',
+            'The customer has only reported a problem and has not asked for a return or refund yet. Do not state eligibility; clarify what happened and what they would like.',
+          )
+        : pass('no_unrequested_eligibility'),
+    );
+  }
+
+  // --- procedures must be documented for THIS case ---------------------------------------------------------------
+  const unauthorized = findUnauthorizedProcedures(text, input.sources, {
+    caseHasDefect: Boolean(input.caseHasDefect),
+  });
+  out.push(
+    unauthorized.length
       ? fail(
           'no_invented_procedure',
           'blocking',
-          `The draft describes a procedure that no policy source documents: ${invented.join(', ')}. Say the team will follow up with instructions instead.`,
+          `The draft describes a procedure the policy does not document for this case: ${unauthorized
+            .map((u) =>
+              u.reason === 'only_documented_for_defective_items'
+                ? `${u.term} (policy applies only to defective or damaged items)`
+                : u.term,
+            )
+            .join(', ')}. Say the team will follow up with instructions instead.`,
         )
       : pass('no_invented_procedure'),
   );

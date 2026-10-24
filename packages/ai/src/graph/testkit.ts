@@ -216,8 +216,17 @@ export function makeHarness(opts: {
     loadOrder: async () => (opts.order === undefined ? order() : opts.order),
     loadPolicies: async () => opts.policies ?? (nordic ? nordicPolicies : bloomPolicies),
     // Mirrors the Postgres port: the case state saved by the most recent earlier run.
-    loadPreviousCaseState: async () =>
-      [...saved].reverse().find((r) => r.case_state)?.case_state ?? null,
+    // Mirrors the Postgres port: the state computed for the most recent customer message BEFORE the one being
+    // answered (ordered by message position, not by when the generation was written).
+    loadPreviousCaseState: async (_conversationId, beforeMessageId) => {
+      const position = (id: string | null) => ctx.messages.findIndex((m) => m.id === id);
+      const candidates = saved
+        .filter((r) => r.case_state && r.trigger_message_id !== beforeMessageId)
+        .map((r, order) => ({ r, pos: position(r.trigger_message_id), order }))
+        .filter((c) => c.pos < position(beforeMessageId));
+      candidates.sort((a, b) => b.pos - a.pos || b.order - a.order);
+      return candidates[0]?.r.case_state ?? null;
+    },
     search: { search },
     listOtherBrandNames: async () =>
       opts.otherBrands ?? (nordic ? ['Bloom Botanics'] : ['Nordic Living']),

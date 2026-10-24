@@ -101,17 +101,54 @@ export function createGenerationPorts(db: SupabaseClient): GenerationPorts {
       })) as (PolicyRef & { content: string })[];
     },
 
-    async loadPreviousCaseState(conversationId) {
-      const { data } = await db
-        .from('ai_generations')
-        .select('case_state')
-        .eq('conversation_id', conversationId)
-        .not('case_state', 'is', null)
-        .neq('status', 'failed')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      return (data?.case_state as PersistedCaseState | null) ?? null;
+    /**
+     * Case state is a cache of what the customer said, so it must describe the conversation BEFORE the message being
+     * answered. Rules (each one protects against a stale or wrong state):
+     *  - scoped to this conversation only (brand and customer follow from the conversation);
+     *  - the state computed for the current message is excluded, so a regeneration re-derives it from the messages
+     *    instead of inheriting its own earlier extraction;
+     *  - "latest" means the latest customer MESSAGE a state covers, not the latest write: a slower, older generation
+     *    that finishes after a newer one cannot shadow it;
+     *  - failed generations are ignored.
+     */
+    async loadPreviousCaseState(conversationId, beforeMessageId) {
+      const [{ data: rows }, { data: current }] = await Promise.all([
+        db
+          .from('ai_generations')
+          .select(
+            'case_state, trigger_message_id, created_at, trigger:messages!ai_generations_trigger_message_id_fkey(created_at)',
+          )
+          .eq('conversation_id', conversationId)
+          .not('case_state', 'is', null)
+          .not('trigger_message_id', 'is', null)
+          .neq('status', 'failed')
+          .neq('trigger_message_id', beforeMessageId)
+          .order('created_at', { ascending: false })
+          .limit(25),
+        db
+          .from('messages')
+          .select('created_at')
+          .eq('id', beforeMessageId)
+          .eq('conversation_id', conversationId)
+          .maybeSingle(),
+      ]);
+      if (!current) return null;
+      const at = (r: { trigger: unknown }) => {
+        const t = Array.isArray(r.trigger) ? r.trigger[0] : r.trigger;
+        return t && typeof t === 'object' && 'created_at' in t
+          ? new Date(String((t as { created_at: string }).created_at)).getTime()
+          : NaN;
+      };
+      const before = new Date(current.created_at).getTime();
+      const best = (rows ?? [])
+        .map((r) => ({ r, t: at(r) }))
+        .filter((x) => Number.isFinite(x.t) && x.t < before)
+        // newest covered message first; among generations for the same message, the most recently written
+        .sort(
+          (a, b) =>
+            b.t - a.t || new Date(b.r.created_at).getTime() - new Date(a.r.created_at).getTime(),
+        )[0];
+      return (best?.r.case_state as PersistedCaseState | null) ?? null;
     },
 
     search: createKbSearchPort(db),

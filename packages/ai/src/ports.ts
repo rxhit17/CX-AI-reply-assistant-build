@@ -88,7 +88,11 @@ export interface GenerationPorts {
   /** Active, non-archived KB entries of the brand that carry structured conditions. */
   loadPolicies(brandId: string): Promise<(PolicyRef & { content: string })[]>;
   /** Case state saved by the most recent earlier run for this conversation (a cache; messages stay authoritative). */
-  loadPreviousCaseState(conversationId: string): Promise<PersistedCaseState | null>;
+  loadPreviousCaseState(
+    conversationId: string,
+    /** The customer message being answered: state computed FOR this message is excluded so a regeneration never builds on its own earlier (possibly wrong) extraction. */
+    beforeMessageId: string,
+  ): Promise<PersistedCaseState | null>;
   search: KbSearchPort;
   listOtherBrandNames(brandId: string): Promise<string[]>;
   loadImages(p: {

@@ -34,6 +34,8 @@ Rules:
 - A short reply that only makes sense given the conversation ("Yes", "It is unused", "I already confirmed", "What is the next step?") continues the open case: classify it by the case's subject, never as "unclear" or "greeting" just because the sentence is short.
 - Greetings, thanks, and acknowledgements with no new request ("hi", "thanks", "ok", "great") and no open case are "greeting". If you genuinely cannot tell what the customer wants, use "unclear".
 
+- Reporting a problem is NOT a request for a return or refund. "It doesn't look like what I ordered", "this isn't what I expected", "the wrong item arrived" are complaints: use intent "complaint" and issue_type "mismatch", with desired_resolution "unknown", until the customer says what they want. Use return_request, refund_request or exchange only when the customer asks for it (or asks whether it is possible). Do not assume whether the seller made an error or the customer ordered wrongly; keep "mismatch" until the customer says which.
+
 CASE UPDATE (case_update): read the WHOLE conversation chronologically as one case and report what the CUSTOMER has said.
 - Fact keys mean exactly this: item_unused = the item has not been used; original_packaging = the item is in / with its original packaging; item_damaged = the item arrived broken or is damaged; customer_ordered_wrong_item = the CUSTOMER says they themselves ordered the wrong item, size or colour (or changed their mind), as opposed to the seller sending the wrong thing; item_differs_from_listing = the customer says what arrived looks different from what was advertised or ordered; item_missing_or_incomplete = something is missing from the order; order_number_provided = they gave an order number.
 - A hedged statement still counts ("I think I ordered the wrong product" → customer_ordered_wrong_item; "I believe it's unused" → item_unused). Only statements the customer explicitly walks back are retracted.
@@ -43,6 +45,7 @@ CASE UPDATE (case_update): read the WHOLE conversation chronologically as one ca
 - Worked example (different product, for illustration only): customer says "the lamp isn't the one I picked" (confirmed: item_differs_from_listing, issue general), then "oh wait, I actually picked the wrong one myself" (issue_type return; confirmed: customer_ordered_wrong_item; retracted: item_differs_from_listing; corrections: ["customer says they chose the wrong item themselves"]). Later "yes" to the agent's "is it unused?" confirms item_unused.
 - desired_resolution is what the customer wants (return, refund, return_and_refund, exchange, replacement, cancellation). resolution_confirmed is true only when the customer has clearly said they want it ("I want to return it and get a refund"), not when they only ask whether it is possible.
 - asks_next_step is true when the latest message asks what happens next or how to proceed.
+- asks_clarification is true only when the customer explicitly asks for something to be explained again or says they did not understand. Asking the same question again is not a clarification request.
 - A PREVIOUS CASE STATE may be provided. It is a hint from an earlier run: keep its facts unless the messages contradict them, and prefer the messages when they differ. Keep facts the customer stated earlier even if they are no longer in the visible messages.
 - Never copy sentences; use the fixed fact keys and short English notes.`,
   ],
@@ -118,6 +121,9 @@ CONVERSATION AWARENESS (these keep the support case moving forward):
 12. Do not repeat your previous reply or restate policy paragraphs the conversation already covered; refer to them in a few words. If the customer repeats themselves, acknowledge it and move forward.
 13. Follow NEXT ACTION below. Do not substitute a different action. Do not invent steps, forms, labels, addresses, portals or timelines: describe a step only if a policy source states it. If the sources do not describe how to carry out the next step (for example how a return is started), say the support team will follow up with the exact instructions, set next_step_documented=false and suggest_human_review=true.
 14. Fill questions_asked with the topic of every question in your reply.
+15. ELIGIBILITY: never tell the customer they are eligible or entitled to a return, refund, exchange or cancellation unless ELIGIBILITY RESULTS support it AND the customer has asked for it. If the customer has only reported a problem (see CASE SO FAR), do not mention return windows, refunds, fees or shipping costs: acknowledge, and ask the one question that clarifies what happened. Do not assume the customer wants a return. When the policy has exceptions that could affect their item (for example made-to-order, personalised or perishable goods, or faulty items), mention the relevant one the first time; never invent exceptions.
+16. DO NOT RESTATE what the customer already knows. Policy facts listed under ALREADY STATED TO THE CUSTOMER must not be repeated unless the customer asks, or the figure changed; a short pointer ("within the window mentioned earlier") is enough. The latest question and the next actionable step come first. {clarificationNote}
+17. The STILL MISSING item "issue_cause" means: it is not known whether we sent a wrong or different item or the customer ordered the wrong one. Ask about exactly that, in one question.
 
 NEXT ACTION: {nextActionInstruction}
 MODE: {modeInstruction}`,
@@ -143,6 +149,10 @@ MODE: {modeInstruction}`,
 <previous_agent_reply>
 {lastAgentReply}
 </previous_agent_reply>
+
+<already_stated_to_customer>
+{alreadyStated}
+</already_stated_to_customer>
 
 <policy_sources>
 {sources}
@@ -177,6 +187,8 @@ const NEXT_ACTION_INSTRUCTIONS: Record<ComposeInput['nextAction'], string> = {
     'Tell the customer where they stand using the eligibility results (and the order facts), in plain language. If they are eligible, say what the policy says happens next.',
   provide_next_step:
     'KEEP IT SHORT (2-4 sentences). The customer has already decided what they want. Acknowledge what they confirmed in one clause, state where they stand in one clause (do not re-explain the window or the policy), then give the next documented step. Do not ask them to confirm again. If asked the same thing twice, answer directly and differently.',
+  follow_up_pending:
+    'The customer is asking again about a step you already gave. Do NOT repeat your previous reply and do NOT restate policy or figures. In 2-3 sentences: acknowledge that they have followed up, say where their request stands now (it is with the team, naming what they asked for), and what happens next. If STILL MISSING is empty, do not ask them for anything. Set suggest_human_review=true. Do not invent a timeline.',
   order_status_update: 'Report the order status from the verified facts.',
   handoff_to_human:
     'Explain that a team member will take over and what they will look at. Do not try to resolve it yourself.',
@@ -221,6 +233,12 @@ export function composeVars(i: ComposeInput) {
       ? i.missingInformation.join(', ')
       : '(nothing; do not ask for more information)',
     lastAgentReply: i.lastAgentReply ?? '(no earlier agent reply)',
+    alreadyStated: i.alreadyStatedFigures.length
+      ? i.alreadyStatedFigures.join(', ')
+      : '(no policy figures stated yet)',
+    clarificationNote: i.asksClarification
+      ? 'The customer asked for clarification, so explaining again is appropriate: re-explain clearly in different words.'
+      : '',
     orderFacts: i.orderFacts
       ? JSON.stringify({ order: i.orderFacts, delivery_estimate: i.deliveryEstimate }, null, 2)
       : '(no order is linked to this conversation)',

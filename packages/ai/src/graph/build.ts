@@ -3,7 +3,13 @@ import { END, MemorySaver, START, StateGraph } from '@langchain/langgraph';
 import type { Eligibility, GuardrailResult } from '@cx/shared';
 import type { AiConfig } from '../config.js';
 import type { EmbeddingService } from '../embeddings.js';
-import { blockingMessages, hasBlockingFailure, validateDraft } from '../guardrails.js';
+import {
+  blockingMessages,
+  hasBlockingFailure,
+  statedFigures,
+  validateDraft,
+} from '../guardrails.js';
+import { hasDocumentedProcedure } from '../procedure.js';
 import type { ComposeMode, HistoryItem, LlmPort, LlmResult } from '../llm/types.js';
 import {
   answeredTopics,
@@ -13,7 +19,12 @@ import {
   type PersistedCaseState,
 } from '../case-state.js';
 import { categoriesForIntent, looksLikePromptInjection } from '../policy/intent.js';
-import { decideNextAction as decide, finalizeNextAction } from '../policy/next-action.js';
+import {
+  decideNextAction as decide,
+  ELIGIBILITY_TOPIC_INTENTS,
+  finalizeNextAction,
+  isAmbiguousMismatch,
+} from '../policy/next-action.js';
 import type {
   ConversationContext,
   GenerationPorts,
@@ -21,7 +32,13 @@ import type {
   HistoryMessage,
 } from '../ports.js';
 import { createToolRegistry, type ToolRegistry } from '../tools.js';
-import { assembleReply, firstName, holdingMessage, shouldAddSignOff } from './assemble.js';
+import {
+  assembleReply,
+  firstName,
+  handoffMessage,
+  holdingMessage,
+  shouldAddSignOff,
+} from './assemble.js';
 import { GenerationState, type GState, type GUpdate, type SourceRef } from './state.js';
 
 export interface GraphDeps {
@@ -135,7 +152,7 @@ export function buildGenerationGraph(deps: GraphDeps) {
     const [orderFacts, policies, previousCaseState] = await Promise.all([
       tools.getOrderDetails(),
       tools.allPolicies(),
-      ports.loadPreviousCaseState(s.conversationId),
+      ports.loadPreviousCaseState(s.conversationId, s.latest!.id),
     ]);
     return { orderFacts, policies, previousCaseState };
   });
@@ -162,6 +179,7 @@ export function buildGenerationGraph(deps: GraphDeps) {
       replyLanguage: supported.includes(customerLanguage) ? customerLanguage : 'en',
       injectionSuspected: u.injection_suspected || looksLikePromptInjection(latest.body),
       asksNextStep: u.case_update.asks_next_step,
+      asksClarification: u.case_update.asks_clarification,
       ...usageOf(result),
     };
   });
@@ -174,7 +192,42 @@ export function buildGenerationGraph(deps: GraphDeps) {
       s.customerSentImage && !base.confirmed_facts.includes('photo_provided')
         ? { ...base, confirmed_facts: [...base.confirmed_facts, 'photo_provided' as const] }
         : base;
-    return { caseState };
+    // Derived from the message history (authoritative), never from the model:
+    //  - was the next step / handoff already given to the customer by an agent reply that was actually sent?
+    //  - which policy figures have agents already stated?
+    const messages = s.context!.messages;
+    const prev = s.previousCaseState;
+    const at = prev?.as_of_message_id
+      ? messages.findIndex((m) => m.id === prev.as_of_message_id)
+      : -1;
+    const agentRepliedSince =
+      at >= 0 && messages.slice(at + 1).some((m) => m.sender_type === 'agent');
+    const nextStepAlreadyGiven = Boolean(
+      agentRepliedSince &&
+      prev?.derived &&
+      ['provide_next_step', 'handoff_to_human', 'follow_up_pending'].includes(
+        prev.derived.next_action,
+      ),
+    );
+    const previouslyStatedFigures = [
+      ...new Set(
+        messages.filter((m) => m.sender_type === 'agent').flatMap((m) => statedFigures(m.body)),
+      ),
+    ];
+    // Same words as an earlier customer message (ignoring case, punctuation and spacing).
+    const norm = (t: string) =>
+      t
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, ' ')
+        .trim();
+    const latestText = norm(s.latest!.body);
+    const customerRepeated =
+      latestText.length > 3 &&
+      messages
+        .filter((m) => m.sender_type === 'customer' && m.id !== s.latest!.id)
+        .slice(-6)
+        .some((m) => norm(m.body) === latestText);
+    return { caseState, nextStepAlreadyGiven, previouslyStatedFigures, customerRepeated };
   });
 
   /** Decides route, required checks and the next support action from the case state (deterministic). */
@@ -186,6 +239,8 @@ export function buildGenerationGraph(deps: GraphDeps) {
       state: s.caseState!,
       customerSentImage: s.customerSentImage,
       orderLinked: s.orderFacts !== null,
+      nextStepAlreadyGiven: s.nextStepAlreadyGiven,
+      customerRepeated: s.customerRepeated,
     });
     return {
       effectiveIntent: d.effectiveIntent,
@@ -287,11 +342,13 @@ export function buildGenerationGraph(deps: GraphDeps) {
         vector_score: null,
         text_score: null,
         fused_score: 0,
+        category: null,
         ...extra,
       });
     };
     for (const r of s.retrieval?.relevant ?? []) {
       add(r.id, r.title, r.version, r.content, {
+        category: r.category,
         vector_score: r.vector_score,
         text_score: r.text_score,
         fused_score: r.fused_score,
@@ -299,7 +356,7 @@ export function buildGenerationGraph(deps: GraphDeps) {
     }
     for (const e of eligibility) {
       const p = await tools.policyFor(e.kind);
-      if (p) add(p.kbId, p.title, p.version, p.content);
+      if (p) add(p.kbId, p.title, p.version, p.content, { category: p.category });
     }
 
     const policyRelevant = s.route === 'policy' || s.route === 'image';
@@ -365,6 +422,8 @@ export function buildGenerationGraph(deps: GraphDeps) {
         }),
       ],
       lastAgentReply: s.lastAgentReply,
+      alreadyStatedFigures: s.previouslyStatedFigures,
+      asksClarification: s.asksClarification,
       brand: { name: ctx.brand.name, tone: voice.tone, style: voice.communication_style },
       replyLanguage: s.replyLanguage,
       includeGreetingInBody:
@@ -395,19 +454,92 @@ export function buildGenerationGraph(deps: GraphDeps) {
     });
     // The next step is only "documented" if the model says every step it gave is in the policy sources; when it
     // is not, the honest outcome is a human handoff rather than invented instructions.
-    const gap = derived.next_action === 'provide_next_step' && !result.value.next_step_documented;
+    // Documentation is checked against the policy sentences that apply to THIS case, not just the model's word.
+    const documented =
+      result.value.next_step_documented &&
+      hasDocumentedProcedure(
+        s.sources.map((x) => ({ category: x.category ?? undefined, content: x.content })),
+        { caseHasDefect: caseHasDefect(s) },
+      );
+    const pending = derived.next_action === 'follow_up_pending';
+    const gap = (derived.next_action === 'provide_next_step' && !documented) || pending;
     return {
       composed: result.value,
       proposedResponse: body,
       composeMode: mode,
-      derived,
+      derived:
+        gap && derived.next_action === 'provide_next_step'
+          ? { ...derived, workflow_stage: 'handoff' as const }
+          : derived,
       attempts: s.attempts + 1,
       escalate: s.escalate || result.value.suggest_human_review || gap,
       escalationReason: gap
-        ? 'No documented procedure for the next step; the team must send the instructions'
+        ? pending
+          ? 'The customer is following up on a step that is still pending with the team'
+          : 'No documented procedure applies to this case; the team must send the instructions'
         : s.escalationReason,
       ...usageOf(result),
     };
+  }
+
+  /** The case genuinely involves a defect or damage (customer statement or a damage check that passed/needs review). */
+  function caseHasDefect(s: GState): boolean {
+    return (
+      Boolean(s.caseState?.confirmed_facts.includes('item_damaged')) ||
+      s.eligibility.some(
+        (e) => e.kind === 'damage' && (e.outcome === 'eligible' || e.outcome === 'needs_review'),
+      )
+    );
+  }
+
+  /** Specific, workflow-level guidance for a retry (the guardrail messages alone say what is wrong, not what to do). */
+  function retryGuidance(results: GuardrailResult[], s: GState): string[] {
+    const failed = new Set(
+      results.filter((r) => !r.passed && r.severity === 'blocking').map((r) => r.check),
+    );
+    const out = blockingMessages(results);
+    if (failed.has('no_repeated_reply')) {
+      out.push(
+        'PROGRESS REQUIRED: your draft repeats your previous reply, but the conversation has moved on (the customer asked again, or told you something new; see CASE SO FAR and the latest message). Do not restate your previous reply or any policy. In 2-3 sentences respond to what is NEW in their latest message, say where the request stands now, and what happens next. Add nothing the policy sources do not support.',
+      );
+    }
+    if (failed.has('no_redundant_question')) {
+      out.push(
+        'Use the facts the customer already gave (CASE SO FAR) and move to the next step; ask for nothing already answered.',
+      );
+    }
+    if (failed.has('no_unrequested_eligibility') || failed.has('eligibility_claim_supported')) {
+      out.push(
+        'Do not state or imply eligibility. Acknowledge the problem and ask the single question that clarifies what happened and what the customer would like.',
+      );
+    }
+    if (failed.has('no_invented_procedure')) {
+      out.push(
+        'Describe no procedure at all. Say the support team will send the exact instructions.',
+      );
+    }
+    void s;
+    return out;
+  }
+
+  /** Last-resort text when no draft passed validation: grounded in the case state and verified order only. */
+  function fallbackBody(s: GState): { text: string; useful: boolean } {
+    const c = s.caseState;
+    const resolution =
+      c && c.desired_resolution !== 'unknown' && c.desired_resolution !== 'none'
+        ? c.desired_resolution
+        : c && ['return', 'refund', 'exchange', 'cancellation'].includes(c.issue_type)
+          ? c.issue_type
+          : null;
+    if (!resolution) return { text: holdingMessage(s.replyLanguage), useful: false };
+    const base = {
+      language: s.replyLanguage,
+      resolution,
+      orderNumber: s.orderFacts?.order_number ?? null,
+    };
+    const first = handoffMessage({ ...base, followUp: false });
+    const already = Boolean(s.lastAgentReply) && s.lastAgentReply!.includes(first.slice(0, 40));
+    return { text: handoffMessage({ ...base, followUp: already }), useful: true };
   }
 
   /** The decision for this run; paths that skip evaluateEligibility still get a consistent derived record. */
@@ -467,7 +599,12 @@ export function buildGenerationGraph(deps: GraphDeps) {
       ...validateDraft({
         reply: s.proposedResponse!,
         citedIds,
-        sources: s.sources.map((x) => ({ id: x.id, title: x.title, content: x.content })),
+        sources: s.sources.map((x) => ({
+          id: x.id,
+          title: x.title,
+          content: x.content,
+          category: x.category ?? undefined,
+        })),
         eligibility: s.eligibility,
         order: s.orderFacts,
         deliveryEstimate: s.deliveryEstimate,
@@ -486,6 +623,12 @@ export function buildGenerationGraph(deps: GraphDeps) {
           }),
         ],
         lastAgentReply: s.lastAgentReply,
+        allowRepeat: s.asksClarification,
+        previouslyStatedFigures: s.previouslyStatedFigures,
+        caseHasDefect: caseHasDefect(s),
+        eligibilityTopicOpen:
+          ELIGIBILITY_TOPIC_INTENTS.includes(s.effectiveIntent ?? s.understanding!.intent) &&
+          !isAmbiguousMismatch(s.caseState!),
       }),
     ];
     if (s.injectionSuspected) {
@@ -535,13 +678,13 @@ export function buildGenerationGraph(deps: GraphDeps) {
       );
     }
     void ctx;
-    return { ...update, guardrails: results, violationFeedback: blockingMessages(results) };
+    return { ...update, guardrails: results, violationFeedback: retryGuidance(results, s) };
   });
 
   const safeFallback = node('safeFallback', async (s) => {
     const reasons = blockingMessages(s.guardrails);
     const body = assembleReply({
-      body: holdingMessage(s.replyLanguage),
+      body: fallbackBody(s).text,
       voice: s.context!.brand.voice,
       customerName: s.context!.customer.name,
       addGreeting: s.replyLanguage === 'en' && !s.priorAgentMessage,

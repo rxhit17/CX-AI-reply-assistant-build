@@ -1,56 +1,37 @@
 # Conversation-intelligence evaluation (real model)
 
-_Generated 2026-10-24T04:56:45.900Z · `gpt-4o-mini` · 2 scenarios x 3 runs · Nordic Living knowledge base, Emma's Oak Side Table delivered 12 days ago (30-day window)_
+_Generated 2026-10-24T07:37:14.864Z · chat `gpt-4o-mini` · judge `gpt-4.1-mini` · 1 scenarios × 6 runs = 6 conversations · real brand knowledge bases_
 
-Each run feeds the customer messages one at a time through the production workflow; after every message the draft is "sent" by the agent and the next customer message follows. Checks are code-based (regexes and case-state assertions), not model-graded.
+Each run feeds customer messages one at a time through the production workflow; the draft after each message is "sent" by the agent and the next message follows. Checks are code-based (regexes and case-state assertions); no model grades another. Images are synthetic drawings, so image scenarios test pipeline behaviour, not vision accuracy.
 
-**Runs passing every turn check: 5/6**
+**Conversations passing every turn check: 6/6**
 
-| Scenario                                                            | Run | Result | First failing turn                                                                                                               |
-| ------------------------------------------------------------------- | --- | ------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| Emma / Oak Side Table (six messages)                                | 1   | pass   |                                                                                                                                  |
-| Emma / Oak Side Table (six messages)                                | 2   | FAIL   | turn 4: guardrail: no_repeated_reply (The draft repeats the previous agent reply. Acknowledge the new message and move forward.) |
-| Emma / Oak Side Table (six messages)                                | 3   | pass   |                                                                                                                                  |
-| Emma / reported transcript (facts given together, then asked twice) | 1   | pass   |                                                                                                                                  |
-| Emma / reported transcript (facts given together, then asked twice) | 2   | pass   |                                                                                                                                  |
-| Emma / reported transcript (facts given together, then asked twice) | 3   | pass   |                                                                                                                                  |
+| Scenario                                                             | Passed | Result |
+| -------------------------------------------------------------------- | ------ | ------ |
+| C. Bloom: damaged bottle WITH photo evidence, then a refund question | 6/6    | stable |
 
-## Example run (Emma / reported transcript (facts given together, then asked twice), run 1)
+## Failures
 
-**Customer 1:** I purchased an Oak Side Table, but it doesn't look like what I ordered.
+None.
 
-_intent return_request → return_request, next action explain_eligibility, known facts: item_differs_from_listing, attempts 2, escalation suggested_
+## Example conversation (C. Bloom: damaged bottle WITH photo evidence, then a refund question, run 1)
 
-> Dear Emma,
-> You are eligible to return the Oak Side Table, as it is within the 30-day return window, which ends on November 11, 2026. Please ensure that the item is unused and in its original packaging before proceeding with the return. The return shipping will be at your expense unless the item is defective or damaged. The team will follow up with the exact instructions on how to initiate the return process.
-> With kind regards, Nordic Living Customer Care
+**Customer 1:** My order was delivered but the bottle is broken.
 
-**Customer 2:** I think I ordered the wrong product.
+_intent damaged_product → damaged_product, next action ask_missing_info, known facts: item_damaged, attempts 1, escalation suggested_
 
-_intent return_request → return_request, next action explain_eligibility, known facts: customer_ordered_wrong_item, attempts 1, escalation suggested_
+> Hi Maya!
+> I’m sorry to hear that your bottle arrived broken. To proceed with your request, we need a clear photo of the damage. This is required to verify the issue as per our policy. Once we have that, we can take the next steps! 🌿
+> Happy growing, The Bloom Botanics Team
 
-> You mentioned that you believe you ordered the wrong product. You are eligible to return the Oak Side Table, as it is within the 30-day return window, which ends on November 11, 2026. Please ensure that the item is unused and in its original packaging before proceeding with the return. The return shipping will be at your expense unless the item is defective or damaged. The team will follow up with the exact instructions on how to initiate the return process.
+**Customer 2:** Here it is.
 
-**Customer 3:** Yes, it is unused and in the original packaging.
+_intent damaged_product → damaged_product, next action explain_eligibility, known facts: item_damaged, photo_provided, attempts 1, escalation suggested_
 
-_intent return_request → return_request, next action provide_next_step, known facts: customer_ordered_wrong_item, item_unused, original_packaging, attempts 1_
+> Thanks for sending the photo, Maya! 🌿 I can see the visible damage on the bottle. Since you reported this within 48 hours of delivery, the team will verify the damage and then we can proceed with the next steps. They may offer a replacement or a refund based on their review. I'll keep you updated!
 
-> You confirmed that the Oak Side Table is unused and in its original packaging. As you are eligible to return the item within the 30-day return window, the team will follow up with the exact instructions on how to initiate the return process. Please note that return shipping will be at your expense unless the item is defective or damaged.
+**Customer 3:** What about the refund?
 
-**Customer 4:** I want to return it and get a refund.
+_intent refund_request → refund_request, next action explain_eligibility, known facts: item_damaged, photo_provided, attempts 1, escalation suggested_
 
-_intent return_request → return_request, next action provide_next_step, known facts: customer_ordered_wrong_item, item_unused, original_packaging, attempts 1, escalation suggested_
-
-> You have confirmed your intention to return the Oak Side Table for a refund. As you are eligible for a refund within the 30-day refund window, the team will follow up with the exact instructions on how to initiate the return process. Please be aware that return shipping will be at your expense unless the item is defective or damaged.
-
-**Customer 5:** I already confirmed. What is the next step?
-
-_intent return_request → return_request, next action provide_next_step, known facts: customer_ordered_wrong_item, item_unused, original_packaging, attempts 2, escalation suggested_
-
-> Thank you for your patience. As you have confirmed your intention to return the Oak Side Table for a refund, the next step is for the team to provide you with the exact instructions on how to initiate the return process. Please note that return shipping will be at your expense unless the item is defective or damaged.
-
-**Customer 6:** I already confirmed. What is the next step?
-
-_intent return_request → return_request, next action provide_next_step, known facts: customer_ordered_wrong_item, item_unused, original_packaging, attempts 2, escalation suggested_
-
-> You have reiterated your intention to return the Oak Side Table for a refund. As you are eligible for a refund within the 30-day refund window, the team will provide you with the exact instructions on how to initiate the return process shortly. Please remember that return shipping will be at your expense unless the item is defective or damaged.
+> The team will verify the damage you reported, and since you're within the 7-day refund window, you're eligible for a refund! 🌿 Once they confirm the damage, we can proceed with the refund process. I'll keep you posted on the outcome!
