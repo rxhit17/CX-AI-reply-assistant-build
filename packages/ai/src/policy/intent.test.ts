@@ -57,7 +57,7 @@ describe('looksLikePromptInjection', () => {
 
 describe('isGreetingOnly', () => {
   it('detects bare greetings in several languages', () => {
-    for (const g of ['Hi', 'hello!', 'Hola', 'Namaste.', 'thanks', 'Good morning'])
+    for (const g of ['Hi', 'hello!', 'Namaste.', 'thanks', 'Good morning'])
       expect(isGreetingOnly(g)).toBe(true);
   });
   it('does not treat real requests as greetings', () => {

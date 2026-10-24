@@ -181,7 +181,7 @@ export const retrievalCases: RetrievalCase[] = [
   // ---- Non-English (raw, before query rewriting) ----
   {
     brand: 'bloom',
-    query: '¿Puedo devolver este producto?',
+    query: 'Kya main yeh product return kar sakta hoon?',
     relevant: [B('return')],
     tag: 'non-english',
   },
@@ -193,7 +193,7 @@ export const retrievalCases: RetrievalCase[] = [
   },
   {
     brand: 'nordic',
-    query: 'Quiero cancelar mi pedido',
+    query: 'Mujhe apna order cancel karna hai',
     relevant: [N('cancel')],
     tag: 'non-english',
   },

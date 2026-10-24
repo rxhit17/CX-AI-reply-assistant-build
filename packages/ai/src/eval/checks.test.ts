@@ -22,9 +22,6 @@ describe('detectReplyLanguage', () => {
   it('detects the supported languages', () => {
     expect(detectReplyLanguage('Your order is on its way and will arrive soon.')).toBe('en');
     expect(
-      detectReplyLanguage('Tu pedido está en camino y llegará pronto, gracias por esperar.'),
-    ).toBe('es');
-    expect(
       detectReplyLanguage(
         'Aapka order abhi processing mein hai, isliye aap ise cancel kar sakte hain.',
       ),

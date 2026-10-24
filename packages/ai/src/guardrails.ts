@@ -85,7 +85,6 @@ const ACTION_DONE = [
   /\b(i('|’)?ve|i have|we('|’)?ve|we have)\s+(already\s+)?(refunded|issued|processed|cancel+ed|approved|initiated|arranged|sent|shipped|dispatched|credited)\b/i,
   /\b(has|have) been\s+(refunded|issued|processed|cancel+ed|approved|credited|dispatched|shipped|initiated)\b/i,
   /\byour (refund|replacement|cancellation|return)\s+(is|has been|was)\s+(approved|confirmed|processed|complete|done)\b/i,
-  /\b(he|ha)\s*(sido|n sido)\s+(reembolsad|cancelad|aprobad|procesad)/i,
   /\b(refund|cancel|cancellation|replacement)\b[^.!?\n]{0,20}\b(kar diya|ho gaya|ho gayi|kar di gayi)\b/i,
 ];
 
@@ -94,7 +93,6 @@ const REFUND_PROMISE = [
   /\byou('|’)?ll\s+(get|receive)\s+(a|your|the|an)?\s*(full\s+)?(refund|reimbursement|replacement|credit)\b/i,
   /\byou will\s+(get|receive)\s+(a|your|the|an)?\s*(full\s+)?(refund|reimbursement|replacement|credit)\b/i,
   /\b(full|guaranteed|100%)\s+refund\b/i,
-  /\b(reembolsaremos|devolveremos|te reembolsar)/i,
   /\brefund (kar denge|de denge|mil jayega|milega)\b/i,
 ];
 /**
@@ -153,7 +151,7 @@ const DISCOUNT =
 const PHOTO_WORD =
   /\b(photos?|pictures?|images?|screenshots?|attachments?|foto|photo|imagen|image|tasveer|tasvir)\b/i;
 const CLAIMS_PHOTO_RECEIVED =
-  /\b(thanks? (you )?for (sending|sharing|the|your)|(received|got|can see|i see|i('|’)?ve (seen|reviewed)|looking at)|(gracias por|recibido|hemos recibido))\b[^.!?\n]{0,50}\b(photos?|pictures?|images?|screenshots?|foto|imagen)\b/i;
+  /\b(thanks? (you )?for (sending|sharing|the|your)|(received|got|can see|i see|i('|’)?ve (seen|reviewed)|looking at))\b[^.!?\n]{0,50}\b(photos?|pictures?|images?|screenshots?|tasveer)\b/i;
 const ASKS_FOR_PHOTO =
   /\b(send|share|provide|upload|attach|submit|could you (please )?(send|share)|please (send|share)|envíe|enviar)\b[^.!?\n]{0,50}\b(photos?|pictures?|images?|screenshots?|foto|imagen|tasveer|tasvir)\b/i;
 
@@ -195,7 +193,7 @@ const HINGLISH_PHOTO_RECEIVED =
 const HINGLISH_ASKS_FOR_PHOTO =
   /\b(photo|tasveer|tasvir|picture|image)\b[^.!?\n]{0,30}\b(bhej(o|iye|iyega|na|ein|dijiye)?|share kar(o|iye|na|ein)|upload kar(o|iye|na|ein))\b/i;
 
-const GREETING_START = /^\s*(hi|hello|hey|dear|hola|namaste|good (morning|afternoon|evening))\b/i;
+const GREETING_START = /^\s*(hi|hello|hey|dear|namaste|good (morning|afternoon|evening))\b/i;
 
 const UNITS =
   '(?:business\\s+days?|working\\s+days?|days?|hours?|hrs?|weeks?|months?|años|días|dias|horas|din|dinon|ghante|ghanta|hafte|mahine)';

@@ -178,7 +178,7 @@ describe('validateDraft', () => {
       expect(
         failing(
           base({
-            reply: 'Muchas gracias, lo revisaremos.',
+            reply: 'Aapka request dekh liya jayega.',
             selfReported: { promises_refund: true },
           }),
         ),
@@ -245,7 +245,7 @@ describe('validateDraft', () => {
       expect(hasBlockingFailure(r)).toBe(false);
     });
     it('warns on a language mismatch', () => {
-      expect(failing(base({ expectedLanguage: 'es', replyLanguage: 'en' }))).toContain(
+      expect(failing(base({ expectedLanguage: 'hinglish', replyLanguage: 'en' }))).toContain(
         'reply_language',
       );
     });

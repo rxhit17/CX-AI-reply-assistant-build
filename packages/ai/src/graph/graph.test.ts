@@ -335,7 +335,7 @@ describe('brand voice', () => {
 
   it('replies in the customer’s language when the brand supports it', async () => {
     const h = makeHarness({
-      messages: [msg('m1', 'customer', 'Hola, ¿cuándo llegará mi pedido?')],
+      messages: [msg('m1', 'customer', 'Hello, mera order kab aayega?')],
       order: order({
         status: 'in_transit',
         delivered_at: null,
@@ -343,13 +343,13 @@ describe('brand voice', () => {
       }),
     });
     const { state } = await runGeneration(h.deps, h.input);
-    expect(state.customerLanguage).toBe('es');
-    expect(state.replyLanguage).toBe('es');
+    expect(state.customerLanguage).toBe('hinglish');
+    expect(state.replyLanguage).toBe('hinglish');
   });
 
   it('falls back to English when the brand does not support the customer’s language', async () => {
     const h = makeHarness({
-      messages: [msg('m1', 'customer', 'Hola, ¿cuándo llegará mi pedido?')],
+      messages: [msg('m1', 'customer', 'Hello, mera order kab aayega?')],
       voice: { ...bloomVoice, supported_languages: ['en'] },
     });
     const { state } = await runGeneration(h.deps, h.input);
@@ -358,7 +358,7 @@ describe('brand voice', () => {
 });
 
 describe('model-based compliance check (non-English only)', () => {
-  const spanish = [msg('m1', 'customer', 'Hola, ¿cuándo llegará mi pedido?')];
+  const hinglishMsgs = [msg('m1', 'customer', 'Hello, mera order kab aayega?')];
   const transit = order({
     status: 'in_transit',
     delivered_at: null,
@@ -384,7 +384,7 @@ describe('model-based compliance check (non-English only)', () => {
       model: 'test',
     });
     const h = makeHarness({
-      messages: spanish,
+      messages: hinglishMsgs,
       order: transit,
       llm: { ...createMockLlm(), judge },
     });
@@ -409,7 +409,7 @@ describe('model-based compliance check (non-English only)', () => {
       model: 'test',
     });
     const h = makeHarness({
-      messages: spanish,
+      messages: hinglishMsgs,
       order: transit,
       llm: { ...createMockLlm(), judge },
     });

@@ -55,7 +55,7 @@ export const brands = [
         'Short, concise sentences. Plain language. At most one emoji (🌿) when it fits.',
       greeting_preference: 'Hi {first_name}!',
       sign_off: 'Happy growing, The Bloom Botanics Team',
-      supported_languages: ['en', 'es', 'hinglish'],
+      supported_languages: ['en', 'hinglish'],
     },
   },
   {
@@ -68,7 +68,7 @@ export const brands = [
         'Complete, well-structured sentences. No slang and no emoji. Address customers formally.',
       greeting_preference: 'Dear {first_name},',
       sign_off: 'With kind regards, Nordic Living Customer Care',
-      supported_languages: ['en', 'es'],
+      supported_languages: ['en'],
     },
   },
 ] as const;
@@ -261,9 +261,9 @@ export const customers = [
   {
     key: 'sofia',
     brand: 'bloom',
-    name: 'Sofía García',
-    email: 'sofia.garcia@example.test',
-    lang: 'es',
+    name: 'Priya Nair',
+    email: 'priya.nair@example.test',
+    lang: 'hinglish',
   },
   {
     key: 'arjun',
@@ -291,7 +291,7 @@ export const customers = [
     brand: 'nordic',
     name: 'Elena Duarte',
     email: 'elena.duarte@example.test',
-    lang: 'es',
+    lang: 'en',
   },
   {
     key: 'noah',
@@ -447,7 +447,7 @@ export const conversations: ConversationSeed[] = [
     customer: 'sofia',
     order: 'sofia-1',
     status: 'open',
-    messages: [{ from: 'customer', body: 'Hola, ¿cuándo llegará mi pedido?', minutesAgo: 45 }],
+    messages: [{ from: 'customer', body: 'Hello, mera order kab aayega?', minutesAgo: 45 }],
   },
   {
     key: 'arjun',
@@ -498,7 +498,7 @@ export const conversations: ConversationSeed[] = [
     messages: [
       {
         from: 'customer',
-        body: 'Hola, quisiera cancelar mi pedido, ¿es posible?',
+        body: 'Hi, I would like to cancel my order. Is that possible?',
         minutesAgo: 25,
       },
     ],

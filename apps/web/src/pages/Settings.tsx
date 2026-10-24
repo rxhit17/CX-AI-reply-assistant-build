@@ -10,7 +10,6 @@ import { api, errorMessage } from '@/lib/api';
 
 const LANGUAGES = [
   { code: 'en', label: 'English' },
-  { code: 'es', label: 'Spanish' },
   { code: 'hinglish', label: 'Hinglish (Hindi in Roman letters)' },
 ];
 

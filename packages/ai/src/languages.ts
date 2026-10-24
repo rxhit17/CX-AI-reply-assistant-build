@@ -1,7 +1,7 @@
 import { SUPPORTED_LANGUAGES } from '@cx/shared';
 
 /**
- * Language handling. Supported reply languages: English, Spanish and Hinglish (Hindi in Roman letters). A customer
+ * Language handling. Supported reply languages: English and Hinglish (Hindi in Roman letters). A customer
  * who writes Hindi (in either script) gets Hinglish. Any other language, French included, is not supported and is
  * answered in English, whatever a stored brand setting says.
  */

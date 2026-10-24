@@ -48,9 +48,8 @@ const HINGLISH_WORDS = new Set([
   'kabhi',
 ]);
 
-/** Detects English, Spanish or Hinglish (Hindi in Roman letters); anything else is treated as English. */
+/** Detects English or Hinglish (Hindi in Roman letters); anything else is treated as English. */
 export function detectLanguage(text: string): string {
-  if (/[¿¡ñ]|\b(hola|gracias|pedido|devolver|cuándo|cuando llegar)/i.test(text)) return 'es';
   const words = text.toLowerCase().match(/[a-z]+/g) ?? [];
   if (words.filter((w) => HINGLISH_WORDS.has(w)).length >= 2) return 'hinglish';
   return 'en';
@@ -62,17 +61,14 @@ const RULES: [RegExp, Intent][] = [
     /\b(broken|cracked|damaged|smashed|shattered|crack|arrived with)\b|toot gaya|toota|tut gaya/i,
     'damaged_product',
   ],
-  [/\b(refund|money back)\b|reembols|paise wapas/i, 'refund_request'],
+  [/\b(refund|money back)\b|paise wapas/i, 'refund_request'],
   [/\b(exchange|swap|replace)\b/i, 'exchange'],
-  [/\b(return|send (it )?back|changed my mind)\b|devolver/i, 'return_request'],
-  [/\b(cancel)\b|cancelar/i, 'cancellation'],
+  [/\b(return|send (it )?back|changed my mind)\b|wapas karna/i, 'return_request'],
+  [/\b(cancel)\b/i, 'cancellation'],
   [/\b(missing|not included|never arrived|didn't arrive|parcel)\b/i, 'missing_product'],
-  [
-    /\b(where is my (order|package)|track|when will|status)\b|cuándo llegar|llegará/i,
-    'order_status',
-  ],
+  [/\b(where is my (order|package)|track|when will|status)\b|kab aayega|kab tak/i, 'order_status'],
   [/\b(shipping|delivery|free shipping)\b/i, 'shipping_question'],
-  [/^\s*(hi|hello|hey|hola|namaste|thanks|thank you|gracias|shukriya)[\s!.,?]*$/i, 'greeting'],
+  [/^\s*(hi|hello|hey|namaste|thanks|thank you|shukriya)[\s!.,?]*$/i, 'greeting'],
 ];
 
 const YES = /^\s*(yes|yeah|yep|sure|correct|it is|it's|that's right|confirmed)\b/i;

@@ -53,7 +53,6 @@ export function assembleReply({
  */
 const HOLDING: Record<string, string> = {
   en: 'Thank you for your message. We are looking into this and will get back to you shortly.',
-  es: 'Gracias por tu mensaje. Estamos revisando tu caso y te responderemos en breve.',
   hinglish:
     'Aapke message ke liye shukriya. Hum ise dekh rahe hain aur jaldi hi aapse sampark karenge.',
 };
@@ -68,15 +67,6 @@ const TOPIC: Record<string, Record<string, string>> = {
     replacement: 'replacement',
     cancellation: 'cancellation',
     other: 'request',
-  },
-  es: {
-    return: 'devolución',
-    refund: 'reembolso',
-    return_and_refund: 'devolución y reembolso',
-    exchange: 'cambio',
-    replacement: 'reemplazo',
-    cancellation: 'cancelación',
-    other: 'solicitud',
   },
   hinglish: {
     return: 'return',
@@ -114,10 +104,6 @@ export function handoffMessage({
   const topic = TOPIC[lang]![resolution] ?? TOPIC[lang]!.other!;
   const o = orderNumber;
   switch (lang) {
-    case 'es':
-      return followUp
-        ? `Gracias por escribir de nuevo. Tu solicitud de ${topic}${o ? ` del pedido ${o}` : ''} está con nuestro equipo, que se pondrá en contacto contigo con los siguientes pasos.`
-        : `Gracias por tu mensaje. Estoy pasando tu solicitud de ${topic}${o ? ` del pedido ${o}` : ''} a nuestro equipo, que se pondrá en contacto contigo con los siguientes pasos.`;
     case 'hinglish':
       return followUp
         ? `Follow-up ke liye shukriya. Aapki ${topic} request${o ? ` (order ${o})` : ''} hamari team ke paas hai; woh next steps ke saath aapse sampark karenge.`

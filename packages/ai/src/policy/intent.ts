@@ -76,7 +76,7 @@ export function looksLikePromptInjection(text: string): boolean {
 }
 
 const GREETING_ONLY =
-  /^\s*(hi|hello|hey|hola|namaste|good (morning|afternoon|evening)|thanks?|thank you|gracias|shukriya)[\s!.,?]*$/i;
+  /^\s*(hi|hello|hey|namaste|good (morning|afternoon|evening)|thanks?|thank you|shukriya)[\s!.,?]*$/i;
 export function isGreetingOnly(text: string): boolean {
   return GREETING_ONLY.test(text);
 }

@@ -556,7 +556,7 @@ export const cases: EvalCase[] = [
   },
   // ---------------------------------------------------------------- multilingual
   {
-    id: 'lng-01-es-tracking',
+    id: 'lng-01-hinglish-tracking',
     category: 'multilingual',
     brand: 'bloom',
     order: {
@@ -566,16 +566,8 @@ export const cases: EvalCase[] = [
       etaInDays: 2,
       item: 'Fiddle Leaf Fig',
     },
-    messages: [c('customer', 'Hola, ¿cuándo llegará mi pedido?')],
-    expect: { language: 'es' },
-  },
-  {
-    id: 'lng-02-es-cancel',
-    category: 'multilingual',
-    brand: 'nordic',
-    order: { status: 'shipped', total: 95, shippedDaysAgo: 0, item: 'Ceramic Table Lamp' },
-    messages: [c('customer', 'Hola, quisiera cancelar mi pedido, ¿es posible?')],
-    expect: { language: 'es', eligibility: { kind: 'cancellation', outcome: ['eligible'] } },
+    messages: [c('customer', 'Hello, mera order kab aayega?')],
+    expect: { language: 'hinglish' },
   },
   {
     id: 'lng-03-hinglish-cancel',
@@ -606,14 +598,6 @@ export const cases: EvalCase[] = [
     order: { status: 'processing', total: 35.9, item: 'Brass Watering Can' },
     messages: [c('customer', 'मुझे अपना ऑर्डर कैंसल करना है')],
     expect: { language: 'hinglish', eligibility: { kind: 'cancellation', outcome: ['eligible'] } },
-  },
-  {
-    id: 'lng-04-es-refund',
-    category: 'multilingual',
-    brand: 'bloom',
-    order: bloomBottle({ deliveredDaysAgo: 20 }),
-    messages: [c('customer', 'Recibí mi pedido hace 20 días. ¿Puedo obtener un reembolso?')],
-    expect: { language: 'es', eligibility: { kind: 'refund', outcome: ['ineligible'] } },
   },
   // ---------------------------------------------------------------- image context
   {

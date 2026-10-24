@@ -34,7 +34,7 @@ export const bloomVoice = {
   communication_style: 'Short sentences',
   greeting_preference: 'Hi {first_name}!',
   sign_off: 'Happy growing, The Bloom Team',
-  supported_languages: ['en', 'es', 'hinglish'],
+  supported_languages: ['en', 'hinglish'],
 };
 
 export const nordicVoice = {
@@ -42,7 +42,7 @@ export const nordicVoice = {
   communication_style: 'Complete sentences, no slang, no emoji',
   greeting_preference: 'Dear {first_name},',
   sign_off: 'With kind regards, Nordic Living Customer Care',
-  supported_languages: ['en', 'es'],
+  supported_languages: ['en'],
 };
 
 export const msg = (

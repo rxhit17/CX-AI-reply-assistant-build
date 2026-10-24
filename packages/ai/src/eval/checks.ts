@@ -65,11 +65,11 @@ export interface CheckResult {
 const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
 const CONTRACTION =
   /\b(can't|won't|don't|doesn't|isn't|aren't|we'll|we're|you'll|you're|I'm|I'll|I've|it's|that's|let's)\b/i;
-const GREETING_START = /^\s*(hi|hello|hey|dear|hola|namaste|good (morning|afternoon|evening))\b/i;
+const GREETING_START = /^\s*(hi|hello|hey|dear|namaste|good (morning|afternoon|evening))\b/i;
 const FIGURE =
   /\b\d+\s*[- ]?\s*(business\s+days?|working\s+days?|days?|hours?|weeks?)\b|[$€£]\s?\d/i;
 
-/** Romanised-Hindi function words that do not occur in English or Spanish text. */
+/** Romanised-Hindi function words that do not occur in English text. */
 const HINGLISH_MARKERS = new Set([
   'aap',
   'aapka',
@@ -110,33 +110,11 @@ const HINGLISH_MARKERS = new Set([
   'ka',
 ]);
 
-/** Heuristic language detector for the supported languages: English, Spanish and Hinglish. */
-export function detectReplyLanguage(text: string): 'en' | 'es' | 'hinglish' {
+/** Heuristic language detector for the supported languages: English and Hinglish. */
+export function detectReplyLanguage(text: string): 'en' | 'hinglish' {
   const words = text.toLowerCase().match(/[a-zà-ÿ']+/g) ?? [];
   const score = (list: string[]) => words.filter((w) => list.includes(w)).length;
   const hinglish = words.filter((w) => HINGLISH_MARKERS.has(w)).length;
-  const es = score([
-    'el',
-    'la',
-    'los',
-    'las',
-    'su',
-    'tu',
-    'pedido',
-    'gracias',
-    'hola',
-    'para',
-    'que',
-    'está',
-    'es',
-    'una',
-    'con',
-    'puede',
-    'por',
-    'del',
-    'sus',
-    'nuestro',
-  ]);
   const en = score([
     'the',
     'your',
@@ -157,7 +135,6 @@ export function detectReplyLanguage(text: string): 'en' | 'es' | 'hinglish' {
     'thank',
   ]);
   if (hinglish >= 3 && hinglish >= en) return 'hinglish';
-  if (es > en) return 'es';
   return 'en';
 }
 
