@@ -71,6 +71,13 @@ _Last updated: 2026-10-23_
 - Remaining: first-message eligibility is premature; one flaky run ends in the safe fallback; regex backstops are English-only.
 
 ## Task 1.1 – Conversation reliability fixes ✅ (see docs/conversation-intelligence.md)
+
 - `follow_up_pending` action, grounded handoff fallback, ambiguity gating (`mismatch`), per-sentence procedural grounding, persistence rules (state before the current message, ordered by covered message), guardrail false-positive fixes.
 - Tests: typecheck/lint clean; AI 259, API 28, integration 70, Playwright 16/16, builds OK.
 - Live GPT-4o-mini (`pnpm eval:conversation`, 8 scenarios x 6): 43/48 in the full run (4 failures were network errors in C2, 1 model variability in A1); C2 re-run 6/6. Reports: docs/eval-conversation-full-run.md, docs/eval-conversation.md.
+
+## Language change – English, Spanish, Hinglish ✅
+
+- French and Hindi (Devanagari) removed everywhere; Hinglish (Hindi in Roman letters, code `hinglish`) added. `SUPPORTED_LANGUAGES` lives in `packages/shared`; `packages/ai/src/languages.ts` normalises codes (`hi`/`hindi` -> `hinglish`, unsupported such as `fr` -> English reply).
+- Hinglish holding/handoff messages, prompt language rule, guardrail patterns, mock LLM, eval scorer, eval cases, retrieval queries, seed data (French demo customer replaced by a Spanish one) and the Settings language list updated.
+- Tests: typecheck/lint clean; AI 267, API 28, integration 70; builds OK; DB re-seeded.

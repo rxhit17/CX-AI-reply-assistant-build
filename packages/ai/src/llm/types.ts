@@ -15,7 +15,7 @@ export const understandingSchema = z.object({
   language: z
     .string()
     .describe(
-      'ISO 639-1 code of the language the customer wrote their latest message in, e.g. en, es, fr, hi',
+      'ISO 639-1 code of the language the customer wrote their latest message in, en, es or hinglish (Hindi in Roman letters or Devanagari is hinglish); any other language by its two-letter ISO code',
     ),
   standalone_query: z
     .string()
@@ -65,7 +65,7 @@ export const composedReplySchema = z.object({
   cited_source_ids: z
     .array(z.string())
     .describe('Labels of the policy sources used, e.g. ["S1","S2"]. Empty if none were used.'),
-  reply_language: z.string().describe('ISO 639-1 code of the language the reply is written in'),
+  reply_language: z.string().describe('Language of the reply: en, es or hinglish'),
   asks_customer_for_photo: z.boolean(),
   promises_refund: z.boolean().describe('True if the reply commits to giving a refund'),
   promises_replacement: z.boolean().describe('True if the reply commits to sending a replacement'),

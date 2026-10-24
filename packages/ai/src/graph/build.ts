@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { normalizeLanguage, pickReplyLanguage } from '../languages.js';
 import { END, MemorySaver, START, StateGraph } from '@langchain/langgraph';
 import type { Eligibility, GuardrailResult } from '@cx/shared';
 import type { AiConfig } from '../config.js';
@@ -170,13 +171,12 @@ export function buildGenerationGraph(deps: GraphDeps) {
       anyCustomerImage: s.customerSentImage,
     });
     const u = result.value;
-    const supported = ctx.brand.voice.supported_languages;
-    const customerLanguage = u.language || ctx.customer.preferred_language || 'en';
+    const customerLanguage = normalizeLanguage(u.language || ctx.customer.preferred_language);
     return {
       understanding: u,
       customerLanguage,
       // Reply in the customer's language when the brand supports it, otherwise in English.
-      replyLanguage: supported.includes(customerLanguage) ? customerLanguage : 'en',
+      replyLanguage: pickReplyLanguage(customerLanguage, ctx.brand.voice.supported_languages),
       injectionSuspected: u.injection_suspected || looksLikePromptInjection(latest.body),
       asksNextStep: u.case_update.asks_next_step,
       asksClarification: u.case_update.asks_clarification,
@@ -614,7 +614,7 @@ export function buildGenerationGraph(deps: GraphDeps) {
         retrievalSufficient: s.sources.length > 0,
         policyRelevant,
         expectedLanguage: s.replyLanguage,
-        replyLanguage: composed.reply_language,
+        replyLanguage: normalizeLanguage(composed.reply_language),
         selfReported: composed,
         answeredTopics: [
           ...answeredTopics(s.caseState!, {

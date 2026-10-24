@@ -25,13 +25,15 @@ describe('detectReplyLanguage', () => {
       detectReplyLanguage('Tu pedido está en camino y llegará pronto, gracias por esperar.'),
     ).toBe('es');
     expect(
-      detectReplyLanguage('Votre commande est en route et vous sera livrée avec le transporteur.'),
-    ).toBe('fr');
-    expect(
       detectReplyLanguage(
-        'आपका ऑर्डर अभी प्रोसेसिंग स्थिति में है, इसलिए आप इसे रद्द कर सकते हैं।',
+        'Aapka order abhi processing mein hai, isliye aap ise cancel kar sakte hain.',
       ),
-    ).toBe('hi');
+    ).toBe('hinglish');
+  });
+  it('plain English is not mistaken for Hinglish', () => {
+    expect(
+      detectReplyLanguage('Thank you. We will contact you with the next steps for your order.'),
+    ).toBe('en');
   });
 });
 

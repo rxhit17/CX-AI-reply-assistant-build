@@ -54,8 +54,8 @@ export function assembleReply({
 const HOLDING: Record<string, string> = {
   en: 'Thank you for your message. We are looking into this and will get back to you shortly.',
   es: 'Gracias por tu mensaje. Estamos revisando tu caso y te responderemos en breve.',
-  fr: 'Merci pour votre message. Nous étudions votre demande et reviendrons vers vous très rapidement.',
-  hi: 'आपके संदेश के लिए धन्यवाद। हम इसे देख रहे हैं और जल्द ही आपसे संपर्क करेंगे।',
+  hinglish:
+    'Aapke message ke liye shukriya. Hum ise dekh rahe hain aur jaldi hi aapse sampark karenge.',
 };
 export const holdingMessage = (language: string) => HOLDING[language] ?? HOLDING.en!;
 
@@ -78,23 +78,14 @@ const TOPIC: Record<string, Record<string, string>> = {
     cancellation: 'cancelación',
     other: 'solicitud',
   },
-  fr: {
-    return: 'retour',
-    refund: 'remboursement',
-    return_and_refund: 'retour et remboursement',
-    exchange: 'échange',
-    replacement: 'remplacement',
-    cancellation: 'annulation',
-    other: 'demande',
-  },
-  hi: {
-    return: 'वापसी',
-    refund: 'रिफंड',
-    return_and_refund: 'वापसी और रिफंड',
-    exchange: 'एक्सचेंज',
-    replacement: 'प्रतिस्थापन',
-    cancellation: 'रद्दीकरण',
-    other: 'अनुरोध',
+  hinglish: {
+    return: 'return',
+    refund: 'refund',
+    return_and_refund: 'return aur refund',
+    exchange: 'exchange',
+    replacement: 'replacement',
+    cancellation: 'cancellation',
+    other: 'request',
   },
 };
 
@@ -127,14 +118,10 @@ export function handoffMessage({
       return followUp
         ? `Gracias por escribir de nuevo. Tu solicitud de ${topic}${o ? ` del pedido ${o}` : ''} está con nuestro equipo, que se pondrá en contacto contigo con los siguientes pasos.`
         : `Gracias por tu mensaje. Estoy pasando tu solicitud de ${topic}${o ? ` del pedido ${o}` : ''} a nuestro equipo, que se pondrá en contacto contigo con los siguientes pasos.`;
-    case 'fr':
+    case 'hinglish':
       return followUp
-        ? `Merci de votre relance. Votre demande de ${topic}${o ? ` pour la commande ${o}` : ''} est entre les mains de notre équipe, qui vous contactera avec les prochaines étapes.`
-        : `Merci pour votre message. Je transmets votre demande de ${topic}${o ? ` pour la commande ${o}` : ''} à notre équipe, qui vous contactera avec les prochaines étapes.`;
-    case 'hi':
-      return followUp
-        ? `फ़ॉलो-अप के लिए धन्यवाद। आपका ${topic} अनुरोध${o ? ` (ऑर्डर ${o})` : ''} हमारी टीम के पास है; वे अगले चरणों के साथ आपसे संपर्क करेंगे।`
-        : `आपके संदेश के लिए धन्यवाद। आपका ${topic} अनुरोध${o ? ` (ऑर्डर ${o})` : ''} हमारी टीम को भेजा जा रहा है; वे अगले चरणों के साथ आपसे संपर्क करेंगे।`;
+        ? `Follow-up ke liye shukriya. Aapki ${topic} request${o ? ` (order ${o})` : ''} hamari team ke paas hai; woh next steps ke saath aapse sampark karenge.`
+        : `Aapke message ke liye shukriya. Aapki ${topic} request${o ? ` (order ${o})` : ''} hamari team ko bheji ja rahi hai; woh next steps ke saath aapse sampark karenge.`;
     default:
       return followUp
         ? `Thank you for following up. Your ${topic} request${o ? ` for order ${o}` : ''} is with our team, who will contact you with the next steps.`

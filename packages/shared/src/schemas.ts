@@ -7,6 +7,7 @@ import {
   intentSchema,
   kbCategorySchema,
   senderTypeSchema,
+  SUPPORTED_LANGUAGES,
 } from './enums.js';
 
 const uuid = z.string().uuid();
@@ -38,7 +39,7 @@ export const brandSettingsSchema = z.object({
   communication_style: z.string().min(1).max(500),
   greeting_preference: z.string().max(200).nullable(),
   sign_off: z.string().max(200),
-  supported_languages: z.array(z.string().min(2).max(10)).min(1),
+  supported_languages: z.array(z.enum(SUPPORTED_LANGUAGES)).min(1),
 });
 export type BrandSettings = z.infer<typeof brandSettingsSchema>;
 export const brandSettingsUpdateSchema = brandSettingsSchema

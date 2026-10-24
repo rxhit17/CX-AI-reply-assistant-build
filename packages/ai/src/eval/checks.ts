@@ -65,16 +65,56 @@ export interface CheckResult {
 const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
 const CONTRACTION =
   /\b(can't|won't|don't|doesn't|isn't|aren't|we'll|we're|you'll|you're|I'm|I'll|I've|it's|that's|let's)\b/i;
-const GREETING_START =
-  /^\s*(hi|hello|hey|dear|hola|bonjour|namaste|नमस्ते|good (morning|afternoon|evening))\b/i;
+const GREETING_START = /^\s*(hi|hello|hey|dear|hola|namaste|good (morning|afternoon|evening))\b/i;
 const FIGURE =
   /\b\d+\s*[- ]?\s*(business\s+days?|working\s+days?|days?|hours?|weeks?)\b|[$€£]\s?\d/i;
 
-/** Heuristic language detector for the four supported languages. */
-export function detectReplyLanguage(text: string): 'en' | 'es' | 'fr' | 'hi' {
-  if ((text.match(/[ऀ-ॿ]/g) ?? []).length > 10) return 'hi';
+/** Romanised-Hindi function words that do not occur in English or Spanish text. */
+const HINGLISH_MARKERS = new Set([
+  'aap',
+  'aapka',
+  'aapki',
+  'aapke',
+  'hai',
+  'hain',
+  'hum',
+  'hamari',
+  'hamare',
+  'karenge',
+  'karna',
+  'kar',
+  'liye',
+  'shukriya',
+  'nahi',
+  'mein',
+  'aur',
+  'yeh',
+  'woh',
+  'raha',
+  'rahi',
+  'rahe',
+  'kya',
+  'mujhe',
+  'apna',
+  'apni',
+  'sakte',
+  'sakta',
+  'sakti',
+  'abhi',
+  'isliye',
+  'ise',
+  'ke',
+  'ki',
+  'ko',
+  'se',
+  'ka',
+]);
+
+/** Heuristic language detector for the supported languages: English, Spanish and Hinglish. */
+export function detectReplyLanguage(text: string): 'en' | 'es' | 'hinglish' {
   const words = text.toLowerCase().match(/[a-zà-ÿ']+/g) ?? [];
   const score = (list: string[]) => words.filter((w) => list.includes(w)).length;
+  const hinglish = words.filter((w) => HINGLISH_MARKERS.has(w)).length;
   const es = score([
     'el',
     'la',
@@ -97,27 +137,6 @@ export function detectReplyLanguage(text: string): 'en' | 'es' | 'fr' | 'hi' {
     'sus',
     'nuestro',
   ]);
-  const fr = score([
-    'le',
-    'la',
-    'les',
-    'votre',
-    'vous',
-    'commande',
-    'merci',
-    'bonjour',
-    'pour',
-    'est',
-    'une',
-    'avec',
-    'nous',
-    'des',
-    'du',
-    'être',
-    'peut',
-    'sur',
-    'vos',
-  ]);
   const en = score([
     'the',
     'your',
@@ -137,8 +156,8 @@ export function detectReplyLanguage(text: string): 'en' | 'es' | 'fr' | 'hi' {
     'please',
     'thank',
   ]);
-  if (es > en && es >= fr) return 'es';
-  if (fr > en && fr > es) return 'fr';
+  if (hinglish >= 3 && hinglish >= en) return 'hinglish';
+  if (es > en) return 'es';
   return 'en';
 }
 

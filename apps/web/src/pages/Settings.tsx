@@ -11,8 +11,7 @@ import { api, errorMessage } from '@/lib/api';
 const LANGUAGES = [
   { code: 'en', label: 'English' },
   { code: 'es', label: 'Spanish' },
-  { code: 'fr', label: 'French' },
-  { code: 'hi', label: 'Hindi' },
+  { code: 'hinglish', label: 'Hinglish (Hindi in Roman letters)' },
 ];
 
 export function SettingsPage() {

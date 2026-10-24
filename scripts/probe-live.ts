@@ -15,7 +15,7 @@ const llm = createLlm(config);
 const embeddings = createEmbeddingService(config);
 const only = process.argv[2];
 
-for (const key of ['maya', 'liam', 'sofia', 'arjun', 'emma', 'oliver', 'helene', 'noah']) {
+for (const key of ['maya', 'liam', 'sofia', 'arjun', 'emma', 'oliver', 'elena', 'noah']) {
   if (only && only !== key) continue;
   const { data: conv } = await db
     .from('conversations')

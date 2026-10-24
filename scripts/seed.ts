@@ -73,6 +73,16 @@ async function ensureUsers(): Promise<Map<string, string>> {
 async function main() {
   const userIds = await ensureUsers();
 
+  // Demo customers removed from the set (French is no longer supported). Deleting the customer cascades to their
+  // orders, conversations and messages, so re-seeding leaves no stale French data behind.
+  must(
+    await db
+      .from('customers')
+      .delete()
+      .in('id', [id('customer:helene')]),
+    'legacy customers',
+  );
+
   must(
     await db
       .from('brands')

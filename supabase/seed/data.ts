@@ -55,7 +55,7 @@ export const brands = [
         'Short, concise sentences. Plain language. At most one emoji (🌿) when it fits.',
       greeting_preference: 'Hi {first_name}!',
       sign_off: 'Happy growing, The Bloom Botanics Team',
-      supported_languages: ['en', 'es', 'hi', 'fr'],
+      supported_languages: ['en', 'es', 'hinglish'],
     },
   },
   {
@@ -68,7 +68,7 @@ export const brands = [
         'Complete, well-structured sentences. No slang and no emoji. Address customers formally.',
       greeting_preference: 'Dear {first_name},',
       sign_off: 'With kind regards, Nordic Living Customer Care',
-      supported_languages: ['en', 'fr', 'es'],
+      supported_languages: ['en', 'es'],
     },
   },
 ] as const;
@@ -270,7 +270,7 @@ export const customers = [
     brand: 'bloom',
     name: 'Arjun Mehta',
     email: 'arjun.mehta@example.test',
-    lang: 'hi',
+    lang: 'hinglish',
   },
   {
     key: 'emma',
@@ -287,11 +287,11 @@ export const customers = [
     lang: 'en',
   },
   {
-    key: 'helene',
+    key: 'elena',
     brand: 'nordic',
-    name: 'Hélène Dubois',
-    email: 'helene.dubois@example.test',
-    lang: 'fr',
+    name: 'Elena Duarte',
+    email: 'elena.duarte@example.test',
+    lang: 'es',
   },
   {
     key: 'noah',
@@ -377,9 +377,9 @@ export const orders: OrderSeed[] = [
     items: [{ name: 'Wool Throw Blanket', quantity: 1, unit_price: 129 }],
   },
   {
-    key: 'helene-1',
+    key: 'elena-1',
     brand: 'nordic',
-    customer: 'helene',
+    customer: 'elena',
     number: 'NL-20090',
     status: 'shipped',
     total: 95,
@@ -457,7 +457,7 @@ export const conversations: ConversationSeed[] = [
     messages: [
       {
         from: 'customer',
-        body: 'मैं अपना ऑर्डर रद्द करना चाहता हूँ, क्या यह संभव है?',
+        body: 'Mujhe apna order cancel karna hai, kya yeh possible hai?',
         minutesAgo: 10,
       },
     ],
@@ -491,14 +491,14 @@ export const conversations: ConversationSeed[] = [
     ],
   },
   {
-    key: 'helene',
-    customer: 'helene',
-    order: 'helene-1',
+    key: 'elena',
+    customer: 'elena',
+    order: 'elena-1',
     status: 'open',
     messages: [
       {
         from: 'customer',
-        body: 'Bonjour, je voudrais annuler ma commande, est-ce possible ?',
+        body: 'Hola, quisiera cancelar mi pedido, ¿es posible?',
         minutesAgo: 25,
       },
     ],

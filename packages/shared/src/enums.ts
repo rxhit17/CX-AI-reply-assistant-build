@@ -58,3 +58,10 @@ export const embeddingStatusSchema = z.enum(['pending', 'ready', 'failed']);
 
 export const ALLOWED_IMAGE_MIME = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const;
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Languages the assistant can reply in. "hinglish" is Hindi written in the Roman (Latin) alphabet, mixed with English
+ * words the way people text. Devanagari is not a supported output script, and French is not supported.
+ */
+export const SUPPORTED_LANGUAGES = ['en', 'es', 'hinglish'] as const;
+export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];

@@ -187,19 +187,19 @@ export const retrievalCases: RetrievalCase[] = [
   },
   {
     brand: 'bloom',
-    query: 'मेरा ऑर्डर टूटा हुआ आया है',
+    query: 'Mera order toota hua aaya hai',
     relevant: [B('damaged')],
     tag: 'non-english',
   },
   {
     brand: 'nordic',
-    query: 'Je voudrais annuler ma commande',
+    query: 'Quiero cancelar mi pedido',
     relevant: [N('cancel')],
     tag: 'non-english',
   },
   {
     brand: 'nordic',
-    query: 'Où est mon colis ? Il n’est jamais arrivé',
+    query: 'Mera parcel kabhi nahi aaya, tracking mein delivered dikh raha hai',
     relevant: [N('delivery')],
     tag: 'non-english',
   },

@@ -20,27 +20,59 @@ import {
 const ZERO = { input: 0, output: 0 };
 const wrap = <T>(value: T): LlmResult<T> => ({ value, usage: ZERO, model: 'mock' });
 
+const HINGLISH_WORDS = new Set([
+  'mujhe',
+  'mera',
+  'meri',
+  'mere',
+  'apna',
+  'apni',
+  'aap',
+  'aapka',
+  'aapki',
+  'kya',
+  'hai',
+  'hain',
+  'nahi',
+  'karna',
+  'chahiye',
+  'chahta',
+  'chahti',
+  'kab',
+  'kaise',
+  'sakta',
+  'sakti',
+  'wapas',
+  'paise',
+  'toota',
+  'kabhi',
+]);
+
+/** Detects English, Spanish or Hinglish (Hindi in Roman letters); anything else is treated as English. */
 export function detectLanguage(text: string): string {
-  if (/[ऀ-ॿ]/.test(text)) return 'hi';
   if (/[¿¡ñ]|\b(hola|gracias|pedido|devolver|cuándo|cuando llegar)/i.test(text)) return 'es';
-  if (/\b(bonjour|merci|commande|annuler|colis|je voudrais)\b/i.test(text)) return 'fr';
+  const words = text.toLowerCase().match(/[a-z]+/g) ?? [];
+  if (words.filter((w) => HINGLISH_WORDS.has(w)).length >= 2) return 'hinglish';
   return 'en';
 }
 
 const RULES: [RegExp, Intent][] = [
   [/\b(human|real person|agent|manager|speak to (a|someone))\b/i, 'human_agent_request'],
-  [/\b(broken|cracked|damaged|smashed|shattered|crack|arrived with)\b|टूटा/i, 'damaged_product'],
-  [/\b(refund|money back)\b|रिफंड|reembols|rembours/i, 'refund_request'],
+  [
+    /\b(broken|cracked|damaged|smashed|shattered|crack|arrived with)\b|toot gaya|toota|tut gaya/i,
+    'damaged_product',
+  ],
+  [/\b(refund|money back)\b|reembols|paise wapas/i, 'refund_request'],
   [/\b(exchange|swap|replace)\b/i, 'exchange'],
   [/\b(return|send (it )?back|changed my mind)\b|devolver/i, 'return_request'],
-  [/\b(cancel)\b|रद्द|annuler|cancelar/i, 'cancellation'],
+  [/\b(cancel)\b|cancelar/i, 'cancellation'],
   [/\b(missing|not included|never arrived|didn't arrive|parcel)\b/i, 'missing_product'],
   [
     /\b(where is my (order|package)|track|when will|status)\b|cuándo llegar|llegará/i,
     'order_status',
   ],
   [/\b(shipping|delivery|free shipping)\b/i, 'shipping_question'],
-  [/^\s*(hi|hello|hey|hola|bonjour|thanks|thank you|gracias|merci)[\s!.,?]*$/i, 'greeting'],
+  [/^\s*(hi|hello|hey|hola|namaste|thanks|thank you|gracias|shukriya)[\s!.,?]*$/i, 'greeting'],
 ];
 
 const YES = /^\s*(yes|yeah|yep|sure|correct|it is|it's|that's right|confirmed)\b/i;

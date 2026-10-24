@@ -86,7 +86,7 @@ const ACTION_DONE = [
   /\b(has|have) been\s+(refunded|issued|processed|cancel+ed|approved|credited|dispatched|shipped|initiated)\b/i,
   /\byour (refund|replacement|cancellation|return)\s+(is|has been|was)\s+(approved|confirmed|processed|complete|done)\b/i,
   /\b(he|ha)\s*(sido|n sido)\s+(reembolsad|cancelad|aprobad|procesad)/i,
-  /\b(a|ont) été\s+(rembours|annul|approuv|trait)/i,
+  /\b(refund|cancel|cancellation|replacement)\b[^.!?\n]{0,20}\b(kar diya|ho gaya|ho gayi|kar di gayi)\b/i,
 ];
 
 const REFUND_PROMISE = [
@@ -94,7 +94,8 @@ const REFUND_PROMISE = [
   /\byou('|’)?ll\s+(get|receive)\s+(a|your|the|an)?\s*(full\s+)?(refund|reimbursement|replacement|credit)\b/i,
   /\byou will\s+(get|receive)\s+(a|your|the|an)?\s*(full\s+)?(refund|reimbursement|replacement|credit)\b/i,
   /\b(full|guaranteed|100%)\s+refund\b/i,
-  /\b(reembolsaremos|devolveremos|rembourserons|vous rembourser|te reembolsar)/i,
+  /\b(reembolsaremos|devolveremos|te reembolsar)/i,
+  /\brefund (kar denge|de denge|mil jayega|milega)\b/i,
 ];
 /**
  * Words that actually ASSERT an entitlement. A bare "you are" / "you're" is not one: "you're looking for a refund"
@@ -150,11 +151,11 @@ const DISCOUNT =
   /(\bdiscount\b|\bcoupon\b|\bpromo(tion(al)?)? code\b|\bvoucher\b|\b\d{1,2}\s?% off\b|\bfree gift\b|\bstore credit\b|\bcomplimentary upgrade\b)/i;
 
 const PHOTO_WORD =
-  /\b(photos?|pictures?|images?|screenshots?|attachments?|foto|photo|imagen|image|तस्वीर|फोटो)\b/i;
+  /\b(photos?|pictures?|images?|screenshots?|attachments?|foto|photo|imagen|image|tasveer|tasvir)\b/i;
 const CLAIMS_PHOTO_RECEIVED =
-  /\b(thanks? (you )?for (sending|sharing|the|your)|(received|got|can see|i see|i('|’)?ve (seen|reviewed)|looking at)|(gracias por|merci pour|reçu|recibido|hemos recibido|nous avons reçu))\b[^.!?\n]{0,50}\b(photos?|pictures?|images?|screenshots?|foto|imagen)\b/i;
+  /\b(thanks? (you )?for (sending|sharing|the|your)|(received|got|can see|i see|i('|’)?ve (seen|reviewed)|looking at)|(gracias por|recibido|hemos recibido))\b[^.!?\n]{0,50}\b(photos?|pictures?|images?|screenshots?|foto|imagen)\b/i;
 const ASKS_FOR_PHOTO =
-  /\b(send|share|provide|upload|attach|submit|could you (please )?(send|share)|please (send|share)|envíe|enviar|envoyez|partagez|भेज)\b[^.!?\n]{0,50}\b(photos?|pictures?|images?|screenshots?|foto|imagen|तस्वीर|फोटो)\b/i;
+  /\b(send|share|provide|upload|attach|submit|could you (please )?(send|share)|please (send|share)|envíe|enviar)\b[^.!?\n]{0,50}\b(photos?|pictures?|images?|screenshots?|foto|imagen|tasveer|tasvir)\b/i;
 
 // Backstops for the model's own \`questions_asked\` self-report (English only; other languages rely on the report).
 const REASKS: Record<string, RegExp> = {
@@ -188,11 +189,16 @@ function similarity(a: string, b: string): number {
   return shared / (x.size + y.size - shared);
 }
 
-const GREETING_START =
-  /^\s*(hi|hello|hey|dear|hola|bonjour|namaste|good (morning|afternoon|evening))\b/i;
+// Hinglish (Hindi in Roman letters) puts the noun before the verb: "aapki photo mil gayi", "photo bhej dijiye".
+const HINGLISH_PHOTO_RECEIVED =
+  /\b(photo|tasveer|tasvir|picture)\b[^.!?\n]{0,30}\b(mil (gayi|gaya|gai)|dekh (li|liya)|receive (ho|hui))\b/i;
+const HINGLISH_ASKS_FOR_PHOTO =
+  /\b(photo|tasveer|tasvir|picture|image)\b[^.!?\n]{0,30}\b(bhej(o|iye|iyega|na|ein|dijiye)?|share kar(o|iye|na|ein)|upload kar(o|iye|na|ein))\b/i;
+
+const GREETING_START = /^\s*(hi|hello|hey|dear|hola|namaste|good (morning|afternoon|evening))\b/i;
 
 const UNITS =
-  '(?:business\\s+days?|working\\s+days?|days?|hours?|hrs?|weeks?|months?|años|días|dias|horas|jours?|heures?|semaines?|दिन|घंटे)';
+  '(?:business\\s+days?|working\\s+days?|days?|hours?|hrs?|weeks?|months?|años|días|dias|horas|din|dinon|ghante|ghanta|hafte|mahine)';
 const FIGURE = new RegExp(`(\\d{1,3}(?:[.,]\\d+)?)\\s*[- ]?\\s*${UNITS}`, 'gi');
 const MONEY = /(?:[$€£₹]\s?|USD\s?)(\d{1,6}(?:[.,]\d{1,2})?)/g;
 const ORDER_NUMBER = /\b[A-Z]{2}-\d{4,6}\b/g;
@@ -429,7 +435,10 @@ export function validateDraft(input: GuardrailInput): GuardrailResult[] {
 
   // --- photos ------------------------------------------------------------------------------------------------------
   if (PHOTO_WORD.test(text)) {
-    if (!input.customerSentImage && CLAIMS_PHOTO_RECEIVED.test(text)) {
+    if (
+      !input.customerSentImage &&
+      (CLAIMS_PHOTO_RECEIVED.test(text) || HINGLISH_PHOTO_RECEIVED.test(text))
+    ) {
       out.push(
         fail(
           'no_false_photo_claims',
@@ -437,7 +446,10 @@ export function validateDraft(input: GuardrailInput): GuardrailResult[] {
           'The draft says a photo was received but the customer has not sent one',
         ),
       );
-    } else if (input.customerSentImage && ASKS_FOR_PHOTO.test(text)) {
+    } else if (
+      input.customerSentImage &&
+      (ASKS_FOR_PHOTO.test(text) || HINGLISH_ASKS_FOR_PHOTO.test(text))
+    ) {
       out.push(
         fail(
           'no_redundant_photo_request',
