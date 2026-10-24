@@ -43,14 +43,14 @@ export async function knowledgeBaseRoutes(app: FastifyInstance, deps: Deps) {
 
   app.post('/knowledge-base', async (req, reply) => {
     const input = kbEntryInputSchema.parse(req.body);
-    return reply.status(201).send({ entry: await createKbEntry(deps, req.user, input) });
+    return reply.status(201).send(await createKbEntry(deps, req.user, input));
   });
 
   app.patch('/knowledge-base/:id', async (req) => {
     const { id } = idParam.parse(req.params);
     const patch = kbEntryUpdateSchema.parse(req.body);
     if (Object.keys(patch).length === 0) throw badRequest('No changes supplied');
-    return { entry: await updateKbEntry(deps, req.user, id, patch) };
+    return updateKbEntry(deps, req.user, id, patch);
   });
 
   // DELETE archives (soft delete) so past drafts keep their cited sources.

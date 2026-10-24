@@ -236,15 +236,17 @@ test.describe('AI reply lifecycle', () => {
         timeout: 45_000,
       });
 
-      // admin raises the refund window from 7 to 30 days
+      // the admin rewrites the policy wording from 7 to 30 days; the eligibility figures follow the text
       await admin.page.goto('/knowledge-base');
       const entry = admin.page
         .getByTestId('kb-entry')
         .filter({ hasText: 'Bloom Botanics Refund Policy' });
       await entry.getByRole('button', { name: 'Edit entry' }).click();
-      await admin.page.getByLabel('Return/refund window (days)').fill('30');
+      const content = admin.page.getByLabel('Policy content');
+      await content.fill((await content.inputValue()).replaceAll('7 days', '30 days'));
       await admin.page.getByTestId('save-kb-entry').click();
       await expect(admin.page.getByText('Entry updated')).toBeVisible();
+      await expect(admin.page.getByText(/7 days → 30 days/)).toBeVisible();
 
       try {
         // the already-generated draft relied on the old version → stale

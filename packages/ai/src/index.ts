@@ -28,3 +28,4 @@ export * from './case-state.js';
 export * from './policy/next-action.js';
 export * from './procedure.js';
 export * from './languages.js';
+export * from './policy/derive-conditions.js';

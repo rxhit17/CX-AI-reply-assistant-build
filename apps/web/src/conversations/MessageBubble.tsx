@@ -1,5 +1,6 @@
 import { Ban, Check, CheckCheck, Sparkles, Undo2 } from 'lucide-react';
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { useAuth } from '@/auth/AuthProvider';
 import { Dialog, DialogContent } from '@/components/ui/primitives';
 import { formatTime } from '@/lib/format';
@@ -122,39 +123,16 @@ export function MessageBubble({
           )}
         >
           <time dateTime={message.created_at}>{formatTime(message.created_at)}</time>
-          {canUnsend &&
-            (confirming ? (
-              <span className="inline-flex items-center gap-1.5">
-                <button
-                  type="button"
-                  className="font-medium text-red-600 hover:underline disabled:opacity-50"
-                  disabled={unsending}
-                  onClick={() => {
-                    onUnsend?.();
-                    setConfirming(false);
-                  }}
-                  data-testid="confirm-unsend"
-                >
-                  Unsend for everyone
-                </button>
-                <button
-                  type="button"
-                  className="hover:underline"
-                  onClick={() => setConfirming(false)}
-                >
-                  Cancel
-                </button>
-              </span>
-            ) : (
-              <button
-                type="button"
-                className="inline-flex items-center gap-0.5 hover:text-foreground hover:underline"
-                onClick={() => setConfirming(true)}
-                data-testid="unsend-message"
-              >
-                <Undo2 className="h-3 w-3" aria-hidden /> Unsend
-              </button>
-            ))}
+          {canUnsend && (
+            <button
+              type="button"
+              className="inline-flex items-center gap-0.5 hover:text-foreground hover:underline"
+              onClick={() => setConfirming(true)}
+              data-testid="unsend-message"
+            >
+              <Undo2 className="h-3 w-3" aria-hidden /> Unsend
+            </button>
+          )}
           {!fromCustomer &&
             viewAs === 'agent' &&
             (message.read_at ? (
@@ -168,6 +146,33 @@ export function MessageBubble({
             ) : null)}
         </p>
       </div>
+      <Dialog open={confirming} onOpenChange={setConfirming}>
+        <DialogContent
+          title="Unsend this message?"
+          description="It will be removed for everyone in this conversation. This cannot be undone."
+          className="max-w-md"
+        >
+          <p className="mb-4 line-clamp-4 whitespace-pre-wrap break-words rounded-md bg-muted px-3 py-2 text-sm">
+            {message.body || (images.length > 0 ? 'Image attachment' : '')}
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setConfirming(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              loading={unsending}
+              data-testid="confirm-unsend"
+              onClick={() => {
+                onUnsend?.();
+                setConfirming(false);
+              }}
+            >
+              Unsend for everyone
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={zoom !== null} onOpenChange={(o) => !o && setZoom(null)}>
         <DialogContent title="Attachment" className="max-w-3xl">
           {zoom && (

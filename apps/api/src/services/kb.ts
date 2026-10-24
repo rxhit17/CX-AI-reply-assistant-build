@@ -1,5 +1,5 @@
-import { kbEmbeddingText } from '@cx/ai';
-import type { KbCategory, KbEntryInput } from '@cx/shared';
+import { deriveConditions, kbEmbeddingText } from '@cx/ai';
+import type { KbCategory, KbEntryInput, PolicyConditions } from '@cx/shared';
 import { assertAdmin, assertBrandAccess, type AuthUser } from '../auth.js';
 import type { Deps } from '../deps.js';
 import { notFound } from '../errors.js';
@@ -30,6 +30,7 @@ interface KbRow {
   title: string;
   category: KbCategory;
   content: string;
+  conditions: PolicyConditions | null;
   content_hash: string;
   version: number;
   embedded_hash: string | null;
@@ -121,14 +122,19 @@ export async function embedEntry(
 export async function createKbEntry(deps: KbDeps, user: AuthUser, input: KbEntryInput) {
   assertAdmin(user);
   assertBrandAccess(user, input.brand_id, 'Brand');
+  // The figures that drive eligibility are read from the policy wording, so the text is the single source.
+  const sync = deriveConditions(input.category, input.content, input.conditions);
   const { data, error } = await deps.db
     .from('knowledge_base')
-    .insert({ ...input, conditions: input.conditions ?? null, created_by: user.id })
+    .insert({ ...input, conditions: sync.conditions, created_by: user.id })
     .select(KB_COLUMNS)
     .single();
   if (error) throw new Error(error.message);
   await embedEntry(deps, data as unknown as KbRow);
-  return loadKbEntry(deps, user, (data as unknown as KbRow).id);
+  return {
+    entry: await loadKbEntry(deps, user, (data as unknown as KbRow).id),
+    conditions_sync: { changes: sync.changes, warnings: sync.warnings },
+  };
 }
 
 export async function updateKbEntry(
@@ -138,7 +144,18 @@ export async function updateKbEntry(
   patch: Record<string, unknown>,
 ) {
   assertAdmin(user);
-  await loadKbEntry(deps, user, id);
+  const current = await loadKbEntry(deps, user, id);
+  // Re-read the figures whenever the wording or category changes (or conditions are supplied explicitly).
+  let sync = { changes: [] as string[], warnings: [] as string[] };
+  if ('content' in patch || 'category' in patch || 'conditions' in patch) {
+    const derived = deriveConditions(
+      (patch.category as KbCategory | undefined) ?? current.category,
+      (patch.content as string | undefined) ?? current.content,
+      'conditions' in patch ? (patch.conditions as PolicyConditions | null) : current.conditions,
+    );
+    patch = { ...patch, conditions: derived.conditions };
+    sync = { changes: derived.changes, warnings: derived.warnings };
+  }
   const { data, error } = await deps.db
     .from('knowledge_base')
     .update(patch)
@@ -148,7 +165,7 @@ export async function updateKbEntry(
   if (error) throw new Error(error.message);
   // No-ops when the content hash is unchanged (e.g. toggling is_active only).
   await embedEntry(deps, data as unknown as KbRow);
-  return loadKbEntry(deps, user, id);
+  return { entry: await loadKbEntry(deps, user, id), conditions_sync: sync };
 }
 
 /** Soft delete: the row stays for audit (drafts reference it); it just stops being retrievable. */

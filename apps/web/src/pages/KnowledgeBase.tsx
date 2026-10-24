@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
-import { KB_CATEGORIES, type PolicyConditions } from '@cx/shared';
+import { KB_CATEGORIES } from '@cx/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Textarea } from '@/components/ui/form';
@@ -267,6 +267,10 @@ export function KnowledgeBase() {
 }
 
 // -------------------------------------------------------------------------------- create / edit
+interface SaveResult {
+  conditions_sync?: { changes: string[]; warnings: string[] };
+}
+
 function EntryDialog({
   entry,
   onClose,
@@ -277,27 +281,31 @@ function EntryDialog({
   onSaved: () => void;
 }) {
   const brands = useBrands();
-  const c = (entry?.conditions ?? {}) as PolicyConditions;
   const [brandId, setBrandId] = useState(entry?.brand_id ?? '');
   const [title, setTitle] = useState(entry?.title ?? '');
   const [category, setCategory] = useState<string>(entry?.category ?? 'faq');
   const [content, setContent] = useState(entry?.content ?? '');
   const [active, setActive] = useState(entry?.is_active ?? true);
-  const [windowDays, setWindowDays] = useState(c.window_days?.toString() ?? '');
-  const [reportDays, setReportDays] = useState(c.report_within_days?.toString() ?? '');
-  const [threshold, setThreshold] = useState(c.free_shipping_threshold?.toString() ?? '');
-  const [requiresPhoto, setRequiresPhoto] = useState(Boolean(c.requires_photo));
-  const [discretion, setDiscretion] = useState(Boolean(c.discretionary_review));
-  const [cancelUntil, setCancelUntil] = useState<string>(c.cancellable_until ?? 'none');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const save = useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
       entry
-        ? api.patch(`/api/knowledge-base/${entry.id}`, payload)
-        : api.post('/api/knowledge-base', payload),
-    onSuccess: () => {
-      toast.success(entry ? 'Entry updated. New replies will use it.' : 'Entry created');
+        ? api.patch<SaveResult>(`/api/knowledge-base/${entry.id}`, payload)
+        : api.post<SaveResult>('/api/knowledge-base', payload),
+    onSuccess: (res) => {
+      const sync = res.conditions_sync;
+      toast.success(entry ? 'Entry updated. New replies will use it.' : 'Entry created', {
+        description: sync?.changes.length
+          ? `Eligibility rules updated from the new wording: ${sync.changes.join('; ')}`
+          : undefined,
+        duration: sync?.changes.length ? 8000 : undefined,
+      });
+      if (sync?.warnings.length)
+        toast.warning('Please check the wording', {
+          description: sync.warnings.join('; '),
+          duration: 10000,
+        });
       onSaved();
       onClose();
     },
@@ -310,37 +318,14 @@ function EntryDialog({
     if (!entry && !brandId) next.brand = 'Choose a brand';
     if (title.trim().length < 3) next.title = 'Title needs at least 3 characters';
     if (content.trim().length < 10) next.content = 'Content needs at least 10 characters';
-    const num = (v: string, key: string) => {
-      if (v === '') return undefined;
-      const n = Number(v);
-      if (!Number.isFinite(n) || n < 0) next[key] = 'Enter a positive number';
-      return n;
-    };
-    const w = num(windowDays, 'window');
-    const r = num(reportDays, 'report');
-    const t = num(threshold, 'threshold');
     setErrors(next);
     if (Object.keys(next).length) return;
-
-    const conditions: Record<string, unknown> = {};
-    if (w) {
-      conditions.window_days = Math.round(w);
-      conditions.window_anchor = 'delivery';
-    }
-    if (r) conditions.report_within_days = Math.round(r);
-    if (t !== undefined) conditions.free_shipping_threshold = t;
-    if (requiresPhoto) conditions.requires_photo = true;
-    if (discretion) conditions.discretionary_review = true;
-    if (cancelUntil !== 'none') conditions.cancellable_until = cancelUntil;
-    // keep fields this form does not edit (e.g. delivery_business_days)
-    if (c.delivery_business_days) conditions.delivery_business_days = c.delivery_business_days;
 
     const payload = {
       title: title.trim(),
       category,
       content: content.trim(),
       is_active: active,
-      conditions: Object.keys(conditions).length ? conditions : null,
     };
     save.mutate(entry ? payload : { ...payload, brand_id: brandId });
   }
@@ -393,66 +378,6 @@ function EntryDialog({
               maxLength={8000}
             />
           </Field>
-          <fieldset className="space-y-2 rounded-md border p-3">
-            <legend className="px-1 text-xs font-medium">Structured conditions (optional)</legend>
-            <p className="text-xs text-muted-foreground">
-              Used by software to compute eligibility. Keep them consistent with the text above.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Field label="Return/refund window (days)" htmlFor="c-window" error={errors.window}>
-                <Input
-                  id="c-window"
-                  inputMode="numeric"
-                  value={windowDays}
-                  onChange={(e) => setWindowDays(e.target.value)}
-                />
-              </Field>
-              <Field label="Damage report within (days)" htmlFor="c-report" error={errors.report}>
-                <Input
-                  id="c-report"
-                  inputMode="numeric"
-                  value={reportDays}
-                  onChange={(e) => setReportDays(e.target.value)}
-                />
-              </Field>
-              <Field label="Free shipping above ($)" htmlFor="c-thr" error={errors.threshold}>
-                <Input
-                  id="c-thr"
-                  inputMode="decimal"
-                  value={threshold}
-                  onChange={(e) => setThreshold(e.target.value)}
-                />
-              </Field>
-            </div>
-            <Field label="Cancellation allowed until" htmlFor="c-cancel">
-              <Select
-                id="c-cancel"
-                value={cancelUntil}
-                onValueChange={setCancelUntil}
-                options={[
-                  { value: 'none', label: 'Not specified' },
-                  { value: 'processing', label: 'Processing (before shipping)' },
-                  { value: 'shipped', label: 'Shipped (before carrier scan)' },
-                ]}
-              />
-            </Field>
-            <label className="flex items-center gap-2 text-sm">
-              <Switch
-                checked={requiresPhoto}
-                onCheckedChange={setRequiresPhoto}
-                aria-label="Requires photo"
-              />{' '}
-              Photo evidence required
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <Switch
-                checked={discretion}
-                onCheckedChange={setDiscretion}
-                aria-label="Discretionary review"
-              />{' '}
-              Exceptions may be reviewed after the window (never guaranteed)
-            </label>
-          </fieldset>
           <label className="flex items-center gap-2 text-sm">
             <Switch checked={active} onCheckedChange={setActive} aria-label="Entry active" /> Active
             (available to the assistant)
