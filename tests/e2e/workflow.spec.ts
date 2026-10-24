@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-const API = 'http://127.0.0.1:3101';
+const API = 'http://127.0.0.1:3201';
 import { cleanup, db, IDS, login, newSession, openConversation, PNG, tag } from './helpers.js';
 
 async function restoreRefundPolicy() {
@@ -148,13 +148,11 @@ test.describe('agent workspace', () => {
     await expect(
       page.getByText('Only PNG, JPEG, WebP and GIF images can be attached.'),
     ).toBeVisible();
-    await page
-      .getByTestId('file-input')
-      .setInputFiles({
-        name: 'huge.png',
-        mimeType: 'image/png',
-        buffer: Buffer.alloc(5 * 1024 * 1024 + 1, 1),
-      });
+    await page.getByTestId('file-input').setInputFiles({
+      name: 'huge.png',
+      mimeType: 'image/png',
+      buffer: Buffer.alloc(5 * 1024 * 1024 + 1, 1),
+    });
     await expect(page.getByText('That image is larger than 5 MB.')).toBeVisible();
   });
 });
@@ -172,10 +170,9 @@ test.describe('AI reply lifecycle', () => {
     // 6: retrieved policy and verified checks are visible
     await expect(page.getByTestId('sources')).toContainText('Damaged Items Policy');
     await expect(page.getByTestId('eligibility')).toContainText('Damage');
-    // (a greeting is only added to the first reply of a conversation; the fixed sign-off is always present)
-    await expect(page.getByTestId('draft-body')).toHaveValue(
-      /Happy growing, The Bloom Botanics Team$/,
-    );
+    // (greeting and fixed sign-off are added to the first reply / after a pause, not to every live-chat reply)
+    await expect(page.getByTestId('draft-body')).toHaveValue(/photo|eligible|team/i);
+    await expect(page.getByTestId('case-understanding')).toContainText('Next action');
 
     // 7: edit
     const edited = `${tag()} Hi Maya! Sorry about the bottle. Happy growing, The Bloom Botanics Team`;

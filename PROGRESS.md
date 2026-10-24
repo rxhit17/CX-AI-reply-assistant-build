@@ -63,3 +63,9 @@ _Last updated: 2026-10-23_
 
 - Disable public sign-ups in Supabase (Authentication → Sign In / Providers).
 - Railway/Vercel access for Phase 10.
+
+## Task 1 – Conversation intelligence fix ✅ (see docs/conversation-intelligence.md)
+
+- Root causes verified; case state + next-action decision added to the existing graph (no new LLM call, one jsonb column).
+- Tests run: typecheck, lint, unit (AI 190, API 28), integration (67), Playwright e2e (16/16), web + API builds. Real-model conversation eval: 5/6 runs pass (`docs/eval-conversation.md`).
+- Remaining: first-message eligibility is premature; one flaky run ends in the safe fallback; regex backstops are English-only.

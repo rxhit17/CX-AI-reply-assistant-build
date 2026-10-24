@@ -391,6 +391,45 @@ function Evidence({
         )}
       </div>
 
+      {draft.case_state && (
+        <div data-testid="case-understanding">
+          <p className="mb-1 font-medium">What the assistant understood</p>
+          <div className="space-y-1 rounded border bg-card px-2 py-1.5">
+            <p>
+              <span className="text-muted-foreground">Issue:</span>{' '}
+              {titleCase(draft.case_state.issue_type)} ·{' '}
+              <span className="text-muted-foreground">Customer wants:</span>{' '}
+              {titleCase(draft.case_state.desired_resolution)}
+              {draft.case_state.resolution_confirmed && (
+                <Badge tone="green" className="ml-1">
+                  confirmed
+                </Badge>
+              )}
+            </p>
+            {draft.case_state.confirmed_facts.length > 0 && (
+              <p>
+                <span className="text-muted-foreground">Customer says (unverified):</span>{' '}
+                {draft.case_state.confirmed_facts.map(titleCase).join(', ')}
+              </p>
+            )}
+            {draft.case_state.corrections.length > 0 && (
+              <p>
+                <span className="text-muted-foreground">Correction applied:</span>{' '}
+                {draft.case_state.corrections.join('; ')}
+              </p>
+            )}
+            {draft.case_state.derived && (
+              <p>
+                <span className="text-muted-foreground">Next action:</span>{' '}
+                {titleCase(draft.case_state.derived.next_action)}
+                {draft.case_state.derived.missing_information.length > 0 &&
+                  ` · missing: ${draft.case_state.derived.missing_information.map(titleCase).join(', ')}`}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {draft.eligibility.length > 0 && (
         <div>
           <p className="mb-1 font-medium">Policy checks (computed by software)</p>

@@ -3,6 +3,14 @@ import type { Eligibility, GuardrailResult } from '@cx/shared';
 import type { ImageEvidence, ComposedReply, ComposeMode, Understanding } from '../llm/types.js';
 import type { DeliveryEstimate, OrderFacts, PolicyRef } from '../policy/rules.js';
 import type { Route } from '../policy/intent.js';
+import type { Intent } from '@cx/shared';
+import type {
+  CaseDerived,
+  CaseState,
+  NextAction,
+  PersistedCaseState,
+  WorkflowStage,
+} from '../case-state.js';
 import type { ConversationContext, TraceEntry } from '../ports.js';
 import type { RetrievalResult } from '../retrieval.js';
 
@@ -62,6 +70,19 @@ export const GenerationState = Annotation.Root({
   replyLanguage: withDefault<string>('en'),
   route: withDefault<Route | null>(null),
   searchQuery: withDefault<string | null>(null),
+
+  // ---- conversation-aware case state (customer statements, kept apart from verified facts)
+  previousCaseState: withDefault<PersistedCaseState | null>(null),
+  caseState: withDefault<CaseState | null>(null),
+  asksNextStep: withDefault<boolean>(false),
+  lastAgentReply: withDefault<string | null>(null),
+  lastAgentAt: withDefault<string | null>(null),
+  effectiveIntent: withDefault<Intent | null>(null),
+  eligibilityKinds: withDefault<string[]>([]),
+  missingInformation: withDefault<string[]>([]),
+  workflowStage: withDefault<WorkflowStage>('intake'),
+  nextAction: withDefault<NextAction>('explain_policy'),
+  derived: withDefault<CaseDerived | null>(null),
 
   // ---- evidence
   retrieval: withDefault<RetrievalResult | null>(null),

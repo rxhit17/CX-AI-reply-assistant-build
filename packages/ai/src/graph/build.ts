@@ -6,11 +6,14 @@ import type { EmbeddingService } from '../embeddings.js';
 import { blockingMessages, hasBlockingFailure, validateDraft } from '../guardrails.js';
 import type { ComposeMode, HistoryItem, LlmPort, LlmResult } from '../llm/types.js';
 import {
-  categoriesForIntent,
-  eligibilityKindsFor,
-  looksLikePromptInjection,
-  routeFor,
-} from '../policy/intent.js';
+  answeredTopics,
+  describeCaseState,
+  mergeCaseState,
+  type CaseDerived,
+  type PersistedCaseState,
+} from '../case-state.js';
+import { categoriesForIntent, looksLikePromptInjection } from '../policy/intent.js';
+import { decideNextAction as decide, finalizeNextAction } from '../policy/next-action.js';
 import type {
   ConversationContext,
   GenerationPorts,
@@ -18,7 +21,7 @@ import type {
   HistoryMessage,
 } from '../ports.js';
 import { createToolRegistry, type ToolRegistry } from '../tools.js';
-import { assembleReply, firstName, holdingMessage } from './assemble.js';
+import { assembleReply, firstName, holdingMessage, shouldAddSignOff } from './assemble.js';
 import { GenerationState, type GState, type GUpdate, type SourceRef } from './state.js';
 
 export interface GraphDeps {
@@ -41,7 +44,8 @@ export interface GenerationInput {
 
 /** Initial attempt + one corrective retry before falling back. */
 export const MAX_COMPOSE_ATTEMPTS = 2;
-const HISTORY_WINDOW = 12;
+// Enough for a long support thread; facts beyond it survive in the persisted case state.
+const HISTORY_WINDOW = 30;
 const MAX_SOURCES = 6;
 const MAX_IMAGES = 3;
 
@@ -112,7 +116,10 @@ export function buildGenerationGraph(deps: GraphDeps) {
         code: 'NO_CUSTOMER_MESSAGE',
       });
     }
+    const lastAgent = context.messages.filter((m) => m.sender_type === 'agent').at(-1);
     return {
+      lastAgentReply: lastAgent?.body ?? null,
+      lastAgentAt: lastAgent?.created_at ?? null,
       context,
       latest: {
         id: latest.id,
@@ -124,12 +131,13 @@ export function buildGenerationGraph(deps: GraphDeps) {
     };
   });
 
-  const loadVerifiedOrderFacts = node('loadVerifiedOrderFacts', async () => {
-    const [orderFacts, policies] = await Promise.all([
+  const loadVerifiedOrderFacts = node('loadVerifiedOrderFacts', async (s) => {
+    const [orderFacts, policies, previousCaseState] = await Promise.all([
       tools.getOrderDetails(),
       tools.allPolicies(),
+      ports.loadPreviousCaseState(s.conversationId),
     ]);
-    return { orderFacts, policies };
+    return { orderFacts, policies, previousCaseState };
   });
 
   const understandIntent = node('understandIntent', async (s) => {
@@ -138,6 +146,7 @@ export function buildGenerationGraph(deps: GraphDeps) {
     const earlier = ctx.messages.filter((m) => m.id !== latest.id);
     const result = await llm.understand({
       brandName: ctx.brand.name,
+      previousCaseState: s.previousCaseState ? describeCaseState(s.previousCaseState) : null,
       history: toHistory(earlier).slice(-HISTORY_WINDOW),
       latest: latest.body,
       latestHasImage: latest.attachmentIds.length > 0,
@@ -152,12 +161,46 @@ export function buildGenerationGraph(deps: GraphDeps) {
       // Reply in the customer's language when the brand supports it, otherwise in English.
       replyLanguage: supported.includes(customerLanguage) ? customerLanguage : 'en',
       injectionSuspected: u.injection_suspected || looksLikePromptInjection(latest.body),
-      route: routeFor({
-        intent: u.intent,
-        asksForHuman: u.asks_for_human,
-        hasCustomerImage: s.customerSentImage,
-      }),
+      asksNextStep: u.case_update.asks_next_step,
       ...usageOf(result),
+    };
+  });
+
+  /** Merges what the customer said in the latest messages into the running case state. */
+  const updateCaseState = node('updateCaseState', async (s) => {
+    const base = mergeCaseState(s.previousCaseState, s.understanding!.case_update, s.latest!.id);
+    // An attachment is a backend fact, not a statement: it overrides what the model inferred about photos.
+    const caseState =
+      s.customerSentImage && !base.confirmed_facts.includes('photo_provided')
+        ? { ...base, confirmed_facts: [...base.confirmed_facts, 'photo_provided' as const] }
+        : base;
+    return { caseState };
+  });
+
+  /** Decides route, required checks and the next support action from the case state (deterministic). */
+  const decideNextAction = node('decideNextAction', async (s) => {
+    const d = decide({
+      intent: s.understanding!.intent,
+      asksForHuman: s.understanding!.asks_for_human,
+      asksNextStep: s.asksNextStep,
+      state: s.caseState!,
+      customerSentImage: s.customerSentImage,
+      orderLinked: s.orderFacts !== null,
+    });
+    return {
+      effectiveIntent: d.effectiveIntent,
+      route: d.route,
+      eligibilityKinds: d.eligibilityKinds,
+      missingInformation: d.missingInformation,
+      workflowStage: d.workflowStage,
+      nextAction: d.nextAction,
+      trace: [
+        {
+          node: 'decideNextAction',
+          ms: 0,
+          note: `intent ${s.understanding!.intent} -> ${d.effectiveIntent}, stage ${d.workflowStage}, next ${d.nextAction}`,
+        },
+      ],
     };
   });
 
@@ -195,16 +238,15 @@ export function buildGenerationGraph(deps: GraphDeps) {
   const retrieveBrandKnowledge = node('retrieveBrandKnowledge', async (s) => {
     const retrieval = await tools.retrieveBrandPolicies(
       s.searchQuery!,
-      categoriesForIntent(s.understanding!.intent),
+      categoriesForIntent(s.effectiveIntent ?? s.understanding!.intent),
     );
     return { retrieval };
   });
 
   const evaluateEligibility = node('evaluateEligibility', async (s) => {
-    const intent = s.understanding!.intent;
-    const kinds = eligibilityKindsFor(intent);
+    const intent = s.effectiveIntent ?? s.understanding!.intent;
     const eligibility: Eligibility[] = [];
-    for (const kind of kinds) {
+    for (const kind of s.eligibilityKinds) {
       if (kind === 'return') eligibility.push(await tools.checkReturnEligibility());
       else if (kind === 'refund') eligibility.push(await tools.checkRefundEligibility());
       else if (kind === 'cancellation')
@@ -262,13 +304,35 @@ export function buildGenerationGraph(deps: GraphDeps) {
 
     const policyRelevant = s.route === 'policy' || s.route === 'image';
     const insufficient = policyRelevant && sources.length === 0;
+    const finalized = finalizeNextAction(
+      {
+        effectiveIntent: intent,
+        route: s.route!,
+        eligibilityKinds: s.eligibilityKinds as Eligibility['kind'][],
+        missingInformation: s.missingInformation,
+        workflowStage: s.workflowStage,
+        nextAction: s.nextAction,
+      },
+      eligibility,
+    );
+    if (insufficient) {
+      finalized.next_action = 'handoff_to_human';
+      finalized.workflow_stage = 'handoff';
+    }
     const reasons: string[] = [];
     if (insufficient)
       reasons.push('No relevant policy information was found in this brand’s knowledge base');
     if (eligibility.some((e) => e.outcome === 'needs_review'))
       reasons.push('An automated check needs a person to review the evidence');
+    if (finalized.next_action === 'handoff_to_human' && !insufficient) {
+      reasons.push('The case needs a person to take the next step');
+    }
     return {
       eligibility,
+      derived: finalized,
+      nextAction: finalized.next_action,
+      workflowStage: finalized.workflow_stage,
+      missingInformation: finalized.missing_information,
       deliveryEstimate,
       sources,
       composeMode: (insufficient
@@ -287,8 +351,20 @@ export function buildGenerationGraph(deps: GraphDeps) {
     const latest = s.latest!;
     const voice = ctx.brand.voice;
     const earlier = ctx.messages.filter((m) => m.id !== latest.id);
+    const derived = deriveFor(s, mode);
+    const caseState = s.caseState!;
     const result = await llm.compose({
       mode,
+      nextAction: derived.next_action,
+      caseSummary: describeCaseState(caseState),
+      missingInformation: derived.missing_information,
+      avoidAsking: [
+        ...answeredTopics(caseState, {
+          orderLinked: s.orderFacts !== null,
+          customerSentImage: s.customerSentImage,
+        }),
+      ],
+      lastAgentReply: s.lastAgentReply,
       brand: { name: ctx.brand.name, tone: voice.tone, style: voice.communication_style },
       replyLanguage: s.replyLanguage,
       includeGreetingInBody:
@@ -311,15 +387,51 @@ export function buildGenerationGraph(deps: GraphDeps) {
       voice,
       customerName: ctx.customer.name,
       addGreeting: s.replyLanguage === 'en' && !s.priorAgentMessage,
+      addSignOff: shouldAddSignOff({
+        priorAgentMessage: s.priorAgentMessage,
+        lastAgentAt: s.lastAgentAt,
+        now: now().getTime(),
+      }),
     });
+    // The next step is only "documented" if the model says every step it gave is in the policy sources; when it
+    // is not, the honest outcome is a human handoff rather than invented instructions.
+    const gap = derived.next_action === 'provide_next_step' && !result.value.next_step_documented;
     return {
       composed: result.value,
       proposedResponse: body,
       composeMode: mode,
+      derived,
       attempts: s.attempts + 1,
-      escalate: s.escalate || result.value.suggest_human_review,
+      escalate: s.escalate || result.value.suggest_human_review || gap,
+      escalationReason: gap
+        ? 'No documented procedure for the next step; the team must send the instructions'
+        : s.escalationReason,
       ...usageOf(result),
     };
+  }
+
+  /** The decision for this run; paths that skip evaluateEligibility still get a consistent derived record. */
+  function deriveFor(s: GState, mode: ComposeMode): CaseDerived {
+    if (s.derived) return s.derived;
+    const forced =
+      mode === 'escalation'
+        ? 'handoff_to_human'
+        : mode === 'clarify'
+          ? 'clarify_request'
+          : mode === 'small_talk'
+            ? 'acknowledge'
+            : s.nextAction;
+    return finalizeNextAction(
+      {
+        effectiveIntent: s.effectiveIntent ?? s.understanding!.intent,
+        route: s.route!,
+        eligibilityKinds: s.eligibilityKinds as Eligibility['kind'][],
+        missingInformation: s.missingInformation,
+        workflowStage: s.workflowStage,
+        nextAction: forced,
+      },
+      s.eligibility,
+    );
   }
 
   const generateConversationalDraft = node('generateConversationalDraft', (s) =>
@@ -367,6 +479,13 @@ export function buildGenerationGraph(deps: GraphDeps) {
         expectedLanguage: s.replyLanguage,
         replyLanguage: composed.reply_language,
         selfReported: composed,
+        answeredTopics: [
+          ...answeredTopics(s.caseState!, {
+            orderLinked: s.orderFacts !== null,
+            customerSentImage: s.customerSentImage,
+          }),
+        ],
+        lastAgentReply: s.lastAgentReply,
       }),
     ];
     if (s.injectionSuspected) {
@@ -389,7 +508,7 @@ export function buildGenerationGraph(deps: GraphDeps) {
       const judged = await llm.judge({ reply: s.proposedResponse!, facts });
       Object.assign(update, usageOf(judged));
       // Findings must quote the reply verbatim; a flag whose quote is not in the reply is discarded as unreliable.
-      const norm = (x: string) => x.toLowerCase().replace(/s+/g, ' ').trim();
+      const norm = (x: string) => x.toLowerCase().replace(/\s+/g, ' ').trim();
       const reply = norm(s.proposedResponse!);
       const confirmed = judged.value.violations.filter(
         (v) => v.quote.trim().length >= 6 && reply.includes(norm(v.quote)),
@@ -426,6 +545,11 @@ export function buildGenerationGraph(deps: GraphDeps) {
       voice: s.context!.brand.voice,
       customerName: s.context!.customer.name,
       addGreeting: s.replyLanguage === 'en' && !s.priorAgentMessage,
+      addSignOff: shouldAddSignOff({
+        priorAgentMessage: s.priorAgentMessage,
+        lastAgentAt: s.lastAgentAt,
+        now: now().getTime(),
+      }),
     });
     return {
       fallbackUsed: true,
@@ -478,6 +602,9 @@ export function buildGenerationGraph(deps: GraphDeps) {
       order_facts: s.orderFacts,
       image_evidence: s.imageEvidence,
       graph_trace: s.trace,
+      case_state: s.caseState
+        ? ({ ...s.caseState, derived: s.derived ?? undefined } as PersistedCaseState)
+        : null,
       sources: s.sources.map((x) => ({
         kb_id: x.id,
         kb_version: x.version,
@@ -512,7 +639,7 @@ export function buildGenerationGraph(deps: GraphDeps) {
   // ------------------------------------------------------------------------------------------------
   const failOr = (next: string) => (s: GState) => (s.error ? 'saveFailure' : next);
 
-  const afterUnderstanding = (s: GState) => {
+  const afterDecision = (s: GState) => {
     if (s.error) return 'saveFailure';
     switch (s.route) {
       case 'small_talk':
@@ -540,6 +667,8 @@ export function buildGenerationGraph(deps: GraphDeps) {
     .addNode('loadConversation', loadConversation)
     .addNode('loadVerifiedOrderFacts', loadVerifiedOrderFacts)
     .addNode('understandIntent', understandIntent)
+    .addNode('updateCaseState', updateCaseState)
+    .addNode('decideNextAction', decideNextAction)
     .addNode('generateConversationalDraft', generateConversationalDraft)
     .addNode('getOrderDetails', getOrderDetails)
     .addNode('rewriteQuery', rewriteQuery)
@@ -562,7 +691,15 @@ export function buildGenerationGraph(deps: GraphDeps) {
       'understandIntent',
       'saveFailure',
     ])
-    .addConditionalEdges('understandIntent', afterUnderstanding, [
+    .addConditionalEdges('understandIntent', failOr('updateCaseState'), [
+      'updateCaseState',
+      'saveFailure',
+    ])
+    .addConditionalEdges('updateCaseState', failOr('decideNextAction'), [
+      'decideNextAction',
+      'saveFailure',
+    ])
+    .addConditionalEdges('decideNextAction', afterDecision, [
       'generateConversationalDraft',
       'getOrderDetails',
       'rewriteQuery',

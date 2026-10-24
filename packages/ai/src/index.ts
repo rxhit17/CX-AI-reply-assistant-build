@@ -24,3 +24,5 @@ export function createLlm(config: AiConfig): LlmPort {
   return config.llmMode === 'mock' ? createMockLlm() : createOpenAiLlm(config);
 }
 export * from './eval/checks.js';
+export * from './case-state.js';
+export * from './policy/next-action.js';

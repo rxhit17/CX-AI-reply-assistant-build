@@ -353,3 +353,29 @@ describe('abuse protection', () => {
     expect(codes).toEqual([201, 409]);
   });
 });
+
+describe('conversation case state (persistence)', () => {
+  it('is saved with each generation and reloaded as the previous state for the next run', async () => {
+    const { createGenerationPorts } = await import('../../apps/api/src/services/ai-ports.js');
+    const first = (await generate(bloom, LIAM)).json().draft;
+    const { data: row } = await db
+      .from('ai_generations')
+      .select('case_state, status')
+      .eq('id', first.id)
+      .single();
+    expect(row?.case_state).toMatchObject({
+      issue_type: expect.any(String),
+      confirmed_facts: expect.any(Array),
+      desired_resolution: expect.any(String),
+      derived: { next_action: expect.any(String), workflow_stage: expect.any(String) },
+    });
+    // draft detail exposes it to the agent UI
+    const detail = await call(bloom, 'GET', `/api/ai/drafts/${first.id}`);
+    expect(detail.json().draft.case_state.derived.next_action).toBeDefined();
+
+    const previous = await createGenerationPorts(db).loadPreviousCaseState(LIAM);
+    expect(previous).toEqual(row?.case_state);
+    // it never leaks across conversations
+    expect(await createGenerationPorts(db).loadPreviousCaseState(randomUUID())).toBeNull();
+  });
+});

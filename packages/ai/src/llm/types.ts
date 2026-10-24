@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Eligibility } from '@cx/shared';
 import { INTENTS } from '@cx/shared';
+import { caseUpdateSchema, questionTopicSchema, type NextAction } from '../case-state.js';
 import type { DeliveryEstimate, OrderFacts } from '../policy/rules.js';
 
 // NOTE: OpenAI strict structured output wants every field present, so optionals are expressed as nullable.
@@ -29,6 +30,9 @@ export const understandingSchema = z.object({
   asks_for_human: z
     .boolean()
     .describe('True if the customer asks to speak to a person / human agent / manager'),
+  case_update: caseUpdateSchema.describe(
+    'What the customer has said about their case across the WHOLE conversation so far',
+  ),
   injection_suspected: z
     .boolean()
     .describe(
@@ -71,6 +75,14 @@ export const composedReplySchema = z.object({
   claims_action_done: z
     .boolean()
     .describe('True if the reply says an action was already carried out'),
+  questions_asked: z
+    .array(questionTopicSchema)
+    .describe('The topic of EVERY question your reply asks the customer (empty if it asks none)'),
+  next_step_documented: z
+    .boolean()
+    .describe(
+      'True only if every procedural step you tell the customer is explicitly written in the policy sources',
+    ),
   suggest_human_review: z
     .boolean()
     .describe('True if a person on the team should review before anything is promised'),
@@ -120,6 +132,8 @@ export interface HistoryItem {
 
 export interface UnderstandInput {
   brandName: string;
+  /** Persisted case state from the previous run, as a hint (the messages remain authoritative). */
+  previousCaseState: string | null;
   history: HistoryItem[];
   latest: string;
   latestHasImage: boolean;
@@ -144,6 +158,14 @@ export interface ComposeInput {
   orderFacts: OrderFacts | null;
   deliveryEstimate: DeliveryEstimate | null;
   eligibility: Eligibility[];
+  nextAction: NextAction;
+  /** Customer-reported case facts (unverified), formatted for the model. */
+  caseSummary: string;
+  missingInformation: string[];
+  /** Topics the customer has already answered; the reply must not ask about them. */
+  avoidAsking: string[];
+  /** The previous agent reply, so the model does not repeat it. */
+  lastAgentReply: string | null;
   sources: { label: string; title: string; content: string }[];
   extraInstruction?: string;
   /** Blocking guardrail failures from the previous attempt, to correct on retry. */

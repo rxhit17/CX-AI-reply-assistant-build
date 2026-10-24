@@ -40,7 +40,13 @@ export interface GuardrailInput {
     promises_replacement?: boolean;
     offers_discount?: boolean;
     claims_action_done?: boolean;
+    /** Topics of the questions the reply asks (QuestionTopic). */
+    questions_asked?: string[];
   };
+  /** Conversation awareness: topics the customer has already answered (confirmed or denied). */
+  answeredTopics?: string[];
+  /** The previous agent reply, to catch a draft that repeats it. */
+  lastAgentReply?: string | null;
 }
 
 const pass = (
@@ -94,6 +100,30 @@ const CLAIMS_PHOTO_RECEIVED =
   /\b(thanks? (you )?for (sending|sharing|the|your)|(received|got|can see|i see|i('|’)?ve (seen|reviewed)|looking at)|(gracias por|merci pour|reçu|recibido|hemos recibido|nous avons reçu))\b[^.!?\n]{0,50}\b(photos?|pictures?|images?|screenshots?|foto|imagen)\b/i;
 const ASKS_FOR_PHOTO =
   /\b(send|share|provide|upload|attach|submit|could you (please )?(send|share)|please (send|share)|envíe|enviar|envoyez|partagez|भेज)\b[^.!?\n]{0,50}\b(photos?|pictures?|images?|screenshots?|foto|imagen|तस्वीर|फोटो)\b/i;
+
+// Backstops for the model's own \`questions_asked\` self-report (English only; other languages rely on the report).
+const REASKS: Record<string, RegExp> = {
+  resolution_confirmation:
+    /\b(please |kindly )?confirm (that )?(you|if you|whether you)( still)? (want|would like|wish) to (return|proceed|go ahead|get)|\bdo you (still )?(want|wish) to (return|proceed)|\bwould you like (me )?to proceed\b|\bcan you confirm (that )?you (want|would like)\b/i,
+  item_unused:
+    /\b(is|was|has)\s+(the\s+(item|product)|it)\s+(been\s+)?(un)?used\b|\bhave you (used|opened)\b|\bconfirm\b[^.?!]{0,40}\bunused\b/i,
+  original_packaging:
+    /\b(is|was)\s+(it|the\s+(item|product))\b[^.?!]{0,25}\boriginal packaging\b|\bconfirm\b[^.?!]{0,40}\bpackaging\b|\bdo you still have the (original )?(packaging|box)\b/i,
+};
+
+/** Operational-procedure terms. A reply may only use them if the policy sources use them too. */
+const PROCEDURE_TERMS =
+  /\b(return label|shipping label|prepaid label|rma|return authori[sz]ation|return portal|return form|drop[- ]?off|pick[- ]?up|collection|courier|qr code|return address|tracking number)\b/gi;
+
+const words = (t: string) => new Set(t.toLowerCase().match(/[\p{L}\p{N}']+/gu) ?? []);
+function similarity(a: string, b: string): number {
+  const x = words(a);
+  const y = words(b);
+  if (x.size === 0 || y.size === 0) return 0;
+  let shared = 0;
+  for (const w of x) if (y.has(w)) shared++;
+  return shared / (x.size + y.size - shared);
+}
 
 const GREETING_START =
   /^\s*(hi|hello|hey|dear|hola|bonjour|namaste|good (morning|afternoon|evening))\b/i;
@@ -359,6 +389,46 @@ export function validateDraft(input: GuardrailInput): GuardrailResult[] {
   } else {
     out.push(pass('photo_consistency'));
   }
+
+  // --- progress: never ask what the customer already answered ----------------------------------------------------
+  const answered = new Set(input.answeredTopics ?? []);
+  const reasked = new Set<string>();
+  for (const t of input.selfReported?.questions_asked ?? []) if (answered.has(t)) reasked.add(t);
+  for (const [topic, re] of Object.entries(REASKS))
+    if (answered.has(topic) && re.test(text)) reasked.add(topic);
+  out.push(
+    reasked.size
+      ? fail(
+          'no_redundant_question',
+          'blocking',
+          `The draft asks about something the customer already answered: ${[...reasked].join(', ')}. Use the known answer and move the case forward.`,
+        )
+      : pass('no_redundant_question'),
+  );
+  if (input.lastAgentReply) {
+    const sim = similarity(text, input.lastAgentReply);
+    out.push(
+      sim >= 0.85
+        ? fail(
+            'no_repeated_reply',
+            'blocking',
+            'The draft repeats the previous agent reply. Acknowledge the new message and move forward.',
+          )
+        : pass('no_repeated_reply'),
+    );
+  }
+  const invented = [
+    ...new Set((text.match(PROCEDURE_TERMS) ?? []).map((m) => m.toLowerCase())),
+  ].filter((term) => !new RegExp(term.replace(/[-\s]/g, '[-\\s]?'), 'i').test(sourceText));
+  out.push(
+    invented.length
+      ? fail(
+          'no_invented_procedure',
+          'blocking',
+          `The draft describes a procedure that no policy source documents: ${invented.join(', ')}. Say the team will follow up with instructions instead.`,
+        )
+      : pass('no_invented_procedure'),
+  );
 
   // --- conversation hygiene ------------------------------------------------------------------------------------------
   if (input.priorAgentMessage && GREETING_START.test(text)) {

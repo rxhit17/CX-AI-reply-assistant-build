@@ -7,8 +7,8 @@ try {
 }
 
 // Dedicated ports on 127.0.0.1 so the run never collides with other local apps (3001/5173 are common).
-const API_PORT = 3101;
-const WEB_PORT = 5273;
+const API_PORT = 3201;
+const WEB_PORT = 5373;
 const HOST = '127.0.0.1';
 
 /**

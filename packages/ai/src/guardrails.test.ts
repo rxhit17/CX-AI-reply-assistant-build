@@ -306,3 +306,68 @@ describe('internal source labels', () => {
     );
   });
 });
+
+describe('conversation progress checks', () => {
+  const answered = ['item_unused', 'original_packaging', 'resolution_confirmation'];
+
+  it('blocks asking again about something the customer already answered (model self-report)', () => {
+    const r = failing(
+      base({
+        answeredTopics: answered,
+        selfReported: { questions_asked: ['resolution_confirmation'] },
+        reply: 'Thanks for your patience. 7 days.',
+      }),
+    );
+    expect(r).toContain('no_redundant_question');
+  });
+  it.each([
+    'Please confirm that you want to return the item.',
+    'Do you still want to return it?',
+    'Is the item unused?',
+    'Could you confirm it is in the original packaging?',
+  ])('catches the re-ask in the text: %s', (reply) => {
+    expect(failing(base({ answeredTopics: answered, reply }))).toContain('no_redundant_question');
+  });
+  it('allows the same question when the customer has not answered it yet', () => {
+    expect(
+      failing(
+        base({
+          answeredTopics: [],
+          reply: 'Please confirm that you want to return the item. Is the item unused?',
+        }),
+      ),
+    ).not.toContain('no_redundant_question');
+  });
+  it('does not block unrelated clarifying questions', () => {
+    expect(
+      failing(base({ answeredTopics: answered, reply: 'Which colour was the table you ordered?' })),
+    ).not.toContain('no_redundant_question');
+  });
+
+  it('blocks a draft that repeats the previous agent reply', () => {
+    const prev =
+      'Thank you for confirming. Our team will follow up with the return instructions for your order.';
+    expect(failing(base({ lastAgentReply: prev, reply: prev }))).toContain('no_repeated_reply');
+    expect(
+      failing(
+        base({
+          lastAgentReply: prev,
+          reply: 'The period is 7 days after delivery, and your order is within it.',
+        }),
+      ),
+    ).not.toContain('no_repeated_reply');
+  });
+
+  it('blocks procedures that the policy sources do not document, but allows documented ones', () => {
+    expect(
+      failing(base({ reply: 'Please print the return label and use the return portal.' })),
+    ).toContain('no_invented_procedure');
+    const documented = {
+      ...SRC,
+      content: SRC.content + ' We arrange a prepaid collection for defective items.',
+    };
+    expect(
+      failing(base({ sources: [documented], reply: 'We can arrange a collection for you.' })),
+    ).not.toContain('no_invented_procedure');
+  });
+});

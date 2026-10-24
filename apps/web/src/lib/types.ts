@@ -97,6 +97,21 @@ export interface DraftRow {
   escalate: boolean;
   guardrails: GuardrailResult[];
   eligibility: Eligibility[];
+  /** What the assistant understood about the case (customer statements are unverified). */
+  case_state: {
+    issue_type: string;
+    confirmed_facts: string[];
+    denied_facts: string[];
+    desired_resolution: string;
+    resolution_confirmed: boolean;
+    corrections: string[];
+    derived?: {
+      workflow_stage: string;
+      next_action: string;
+      missing_information: string[];
+      eligibility_status: string;
+    };
+  } | null;
   image_evidence: {
     usable: boolean;
     subject: string;

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { GenerationPorts, OrderFacts, PolicyRef } from '@cx/ai';
+import type { GenerationPorts, OrderFacts, PersistedCaseState, PolicyRef } from '@cx/ai';
 import { createKbSearchPort } from './kb-search.js';
 
 const MAX_HISTORY = 40;
@@ -99,6 +99,19 @@ export function createGenerationPorts(db: SupabaseClient): GenerationPorts {
         conditions: k.conditions,
         content: k.content,
       })) as (PolicyRef & { content: string })[];
+    },
+
+    async loadPreviousCaseState(conversationId) {
+      const { data } = await db
+        .from('ai_generations')
+        .select('case_state')
+        .eq('conversation_id', conversationId)
+        .not('case_state', 'is', null)
+        .neq('status', 'failed')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return (data?.case_state as PersistedCaseState | null) ?? null;
     },
 
     search: createKbSearchPort(db),

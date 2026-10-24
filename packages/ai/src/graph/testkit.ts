@@ -37,16 +37,25 @@ export const bloomVoice = {
   supported_languages: ['en', 'es', 'hi', 'fr'],
 };
 
+export const nordicVoice = {
+  tone: 'Professional, premium and formal',
+  communication_style: 'Complete sentences, no slang, no emoji',
+  greeting_preference: 'Dear {first_name},',
+  sign_off: 'With kind regards, Nordic Living Customer Care',
+  supported_languages: ['en', 'fr', 'es'],
+};
+
 export const msg = (
   id: string,
   sender: 'customer' | 'agent',
   body: string,
   images = 0,
+  createdAt: string = NOW.toISOString(),
 ): HistoryMessage => ({
   id,
   sender_type: sender,
   body,
-  created_at: NOW.toISOString(),
+  created_at: createdAt,
   attachments: Array.from({ length: images }, (_, i) => ({
     id: `${id}-img${i}`,
     mime_type: 'image/png',
@@ -113,6 +122,50 @@ export const bloomPolicies = [
   ),
 ];
 
+const nordicPolicy = (
+  category: string,
+  conditions: PolicyRef['conditions'],
+  content: string,
+  id: string,
+) => ({
+  ...policy(category, conditions, content, id),
+  title: `Nordic Living ${category}`,
+});
+
+/** Condensed copies of the seeded Nordic Living policy text (same windows and conditions). */
+export const nordicPolicies = [
+  nordicPolicy(
+    'return_policy',
+    { window_days: 30, window_anchor: 'delivery' },
+    'Items may be returned within 30 days of delivery provided they are unused and in their original packaging. Return shipping is paid by the customer unless the item arrived defective or damaged, in which case we arrange a prepaid collection.',
+    '20000000-0000-4000-8000-000000000001',
+  ),
+  nordicPolicy(
+    'refund_policy',
+    { window_days: 30, window_anchor: 'delivery', discretionary_review: true },
+    'Refunds are available for returns initiated within 30 days of delivery. After the returned item has been received and inspected, the refund is processed within 10 business days to the original payment method.',
+    '20000000-0000-4000-8000-000000000002',
+  ),
+  nordicPolicy(
+    'shipping_policy',
+    { free_shipping_threshold: 100, delivery_business_days: [5, 8] },
+    'Complimentary shipping is provided on orders over $100. Standard delivery takes 5-8 business days after dispatch.',
+    '20000000-0000-4000-8000-000000000004',
+  ),
+];
+
+/** Nordic Living, Emma Larsen, Oak Side Table delivered 12 days ago. */
+export const emmaOrder = (over: Partial<OrderFacts> = {}): OrderFacts =>
+  order({
+    order_number: 'NL-20077',
+    total: 180,
+    placed_at: daysAgo(17),
+    shipped_at: daysAgo(15),
+    delivered_at: daysAgo(12),
+    items: [{ name: 'Oak Side Table', quantity: 1, unit_price: 180 }],
+    ...over,
+  });
+
 export interface Harness {
   deps: GraphDeps;
   input: GenerationInput;
@@ -131,21 +184,28 @@ export function makeHarness(opts: {
   llm?: GraphDeps['llm'];
   voice?: typeof bloomVoice;
   customerLanguage?: string;
+  brand?: 'bloom' | 'nordic';
 }): Harness {
+  const nordic = opts.brand === 'nordic';
+  const brandId = nordic ? NORDIC_ID : BLOOM_ID;
   const saved: GenerationRecord[] = [];
   const escalations: Harness['escalations'] = [];
   const ctx: ConversationContext = {
     conversation: {
       id: CONV_ID,
-      brand_id: BLOOM_ID,
+      brand_id: brandId,
       customer_id: 'cust-1',
       order_id: opts.order === null ? null : 'order-1',
       status: 'open',
     },
-    brand: { id: BLOOM_ID, name: 'Bloom Botanics', voice: opts.voice ?? bloomVoice },
+    brand: {
+      id: brandId,
+      name: nordic ? 'Nordic Living' : 'Bloom Botanics',
+      voice: opts.voice ?? (nordic ? nordicVoice : bloomVoice),
+    },
     customer: {
       id: 'cust-1',
-      name: 'Maya Patel',
+      name: nordic ? 'Emma Larsen' : 'Maya Patel',
       preferred_language: opts.customerLanguage ?? 'en',
     },
     messages: opts.messages,
@@ -154,9 +214,13 @@ export function makeHarness(opts: {
   const ports: GenerationPorts = {
     loadConversation: async () => ctx,
     loadOrder: async () => (opts.order === undefined ? order() : opts.order),
-    loadPolicies: async () => opts.policies ?? bloomPolicies,
+    loadPolicies: async () => opts.policies ?? (nordic ? nordicPolicies : bloomPolicies),
+    // Mirrors the Postgres port: the case state saved by the most recent earlier run.
+    loadPreviousCaseState: async () =>
+      [...saved].reverse().find((r) => r.case_state)?.case_state ?? null,
     search: { search },
-    listOtherBrandNames: async () => opts.otherBrands ?? ['Nordic Living'],
+    listOtherBrandNames: async () =>
+      opts.otherBrands ?? (nordic ? ['Bloom Botanics'] : ['Nordic Living']),
     loadImages: async ({ attachmentIds }) =>
       attachmentIds.map((id) => ({ id, dataUrl: 'data:image/png;base64,AAAA' })),
     saveGeneration: async (record) => {
@@ -171,7 +235,7 @@ export function makeHarness(opts: {
     deps: { ports, llm: opts.llm ?? createMockLlm(), config, embeddings: null, now: () => NOW },
     input: {
       conversationId: CONV_ID,
-      brandId: BLOOM_ID,
+      brandId,
       customerId: 'cust-1',
       orderId: opts.order === null ? null : 'order-1',
       requestedBy: 'agent-1',

@@ -97,13 +97,21 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   if (!session) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   if (meError) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm" role="alert">
+      <div
+        className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm"
+        role="alert"
+      >
         <p className="max-w-md">
-          You are signed in, but the application server could not be reached or did not respond correctly ({meError}). Check that the API is running and that VITE_API_URL points to it.
+          You are signed in, but the application server could not be reached or did not respond
+          correctly ({meError}). Check that the API is running and that VITE_API_URL points to it.
         </p>
         <div className="flex gap-2">
-          <button className="rounded-md border px-3 py-1.5 font-medium" onClick={retryMe}>Try again</button>
-          <button className="rounded-md border px-3 py-1.5" onClick={() => void signOut()}>Sign out</button>
+          <button className="rounded-md border px-3 py-1.5 font-medium" onClick={retryMe}>
+            Try again
+          </button>
+          <button className="rounded-md border px-3 py-1.5" onClick={() => void signOut()}>
+            Sign out
+          </button>
         </div>
       </div>
     );

@@ -2,6 +2,7 @@ import type { Eligibility, GuardrailResult, Intent } from '@cx/shared';
 import type { KbSearchPort } from './retrieval.js';
 import type { OrderFacts, PolicyRef } from './policy/rules.js';
 import type { ImageEvidence } from './llm/types.js';
+import type { PersistedCaseState } from './case-state.js';
 
 export interface HistoryMessage {
   id: string;
@@ -72,6 +73,8 @@ export interface GenerationRecord {
   order_facts: OrderFacts | null;
   image_evidence: ImageEvidence | null;
   graph_trace: TraceEntry[];
+  /** Conversation-aware case state after this run (customer statements + derived workflow decision). */
+  case_state: PersistedCaseState | null;
   sources: SavedSource[];
 }
 
@@ -84,6 +87,8 @@ export interface GenerationPorts {
   loadOrder(orderId: string, brandId: string, customerId: string): Promise<OrderFacts | null>;
   /** Active, non-archived KB entries of the brand that carry structured conditions. */
   loadPolicies(brandId: string): Promise<(PolicyRef & { content: string })[]>;
+  /** Case state saved by the most recent earlier run for this conversation (a cache; messages stay authoritative). */
+  loadPreviousCaseState(conversationId: string): Promise<PersistedCaseState | null>;
   search: KbSearchPort;
   listOtherBrandNames(brandId: string): Promise<string[]>;
   loadImages(p: {

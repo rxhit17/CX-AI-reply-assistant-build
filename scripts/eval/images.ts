@@ -28,7 +28,12 @@ function png(pixels: Uint8Array): Buffer {
   ihdr.writeUInt32BE(H, 4);
   ihdr[8] = 8;
   ihdr[9] = 2;
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
 }
 
 function canvas(bg: RGB) {
@@ -65,14 +70,20 @@ function bottle(cracked: boolean) {
     c.line(124, 176, 160, 218, dark);
     c.line(150, 146, 168, 130, dark, 1);
     c.line(124, 176, 96, 190, dark, 1);
-    for (const [x, y] of [[170, 226], [184, 232], [74, 232]] as const) c.rect(x, y, x + 8, y + 6, [90, 165, 185]); // shards on the table
+    for (const [x, y] of [
+      [170, 226],
+      [184, 232],
+      [74, 232],
+    ] as const)
+      c.rect(x, y, x + 8, y + 6, [90, 165, 185]); // shards on the table
   }
   return png(c.px);
 }
 
 function plain() {
   const c = canvas([200, 210, 230]);
-  for (let y = 0; y < H; y++) c.line(0, y, W - 1, y, [200 - Math.floor(y / 4), 210 - Math.floor(y / 5), 230], 0);
+  for (let y = 0; y < H; y++)
+    c.line(0, y, W - 1, y, [200 - Math.floor(y / 4), 210 - Math.floor(y / 5), 230], 0);
   return png(c.px);
 }
 

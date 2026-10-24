@@ -42,8 +42,11 @@ const onlyCategory = flag('category');
 
 const env = loadEnv();
 const config = toAiConfig(env);
-if (config.llmMode !== 'openai') throw new Error('The evaluation must run against the real model (LLM_MODE=openai)');
-const db = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+if (config.llmMode !== 'openai')
+  throw new Error('The evaluation must run against the real model (LLM_MODE=openai)');
+const db = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { persistSession: false },
+});
 const llm = createLlm(config);
 const embeddings = createEmbeddingService(config);
 const realPorts = createGenerationPorts(db);
@@ -51,7 +54,10 @@ const realPorts = createGenerationPorts(db);
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
 const NOW = Date.now();
-const CUSTOMER = { bloom: { id: 'cust-bloom', name: 'Maya Patel' }, nordic: { id: 'cust-nordic', name: 'Emma Larsen' } };
+const CUSTOMER = {
+  bloom: { id: 'cust-bloom', name: 'Maya Patel' },
+  nordic: { id: 'cust-nordic', name: 'Emma Larsen' },
+};
 
 const { data: kbRows } = await db.from('knowledge_base').select('id, brand_id');
 const kbBrand = new Map((kbRows ?? []).map((r) => [r.id as string, r.brand_id as string]));
@@ -59,13 +65,33 @@ const { data: brandRows } = await db.from('brands').select('id, name');
 const brandName = new Map((brandRows ?? []).map((b) => [b.id as string, b.name as string]));
 const voices = new Map<string, ConversationContext['brand']['voice']>();
 for (const b of ['bloom', 'nordic'] as const) {
-  const { data } = await db.from('brand_settings').select('*').eq('brand_id', id(`brand:${b}`)).single();
-  voices.set(b, { tone: data!.tone, communication_style: data!.communication_style, greeting_preference: data!.greeting_preference, sign_off: data!.sign_off, supported_languages: data!.supported_languages });
+  const { data } = await db
+    .from('brand_settings')
+    .select('*')
+    .eq('brand_id', id(`brand:${b}`))
+    .single();
+  voices.set(b, {
+    tone: data!.tone,
+    communication_style: data!.communication_style,
+    greeting_preference: data!.greeting_preference,
+    sign_off: data!.sign_off,
+    supported_languages: data!.supported_languages,
+  });
 }
 
 function orderFacts(spec: OrderSpec): OrderFacts {
-  const delivered = spec.deliveredHoursAgo !== undefined ? NOW - spec.deliveredHoursAgo * HOUR : spec.deliveredDaysAgo !== undefined ? NOW - spec.deliveredDaysAgo * DAY : null;
-  const shipped = spec.shippedDaysAgo !== undefined ? NOW - spec.shippedDaysAgo * DAY : delivered ? delivered - 3 * DAY : null;
+  const delivered =
+    spec.deliveredHoursAgo !== undefined
+      ? NOW - spec.deliveredHoursAgo * HOUR
+      : spec.deliveredDaysAgo !== undefined
+        ? NOW - spec.deliveredDaysAgo * DAY
+        : null;
+  const shipped =
+    spec.shippedDaysAgo !== undefined
+      ? NOW - spec.shippedDaysAgo * DAY
+      : delivered
+        ? delivered - 3 * DAY
+        : null;
   return {
     order_number: 'EV-10001',
     status: spec.status,
@@ -73,8 +99,10 @@ function orderFacts(spec: OrderSpec): OrderFacts {
     currency: 'USD',
     placed_at: new Date((shipped ?? NOW) - 2 * DAY).toISOString(),
     shipped_at: shipped ? new Date(shipped).toISOString() : null,
-    delivered_at: spec.status === 'delivered' && delivered ? new Date(delivered).toISOString() : null,
-    estimated_delivery_at: spec.etaInDays !== undefined ? new Date(NOW + spec.etaInDays * DAY).toISOString() : null,
+    delivered_at:
+      spec.status === 'delivered' && delivered ? new Date(delivered).toISOString() : null,
+    estimated_delivery_at:
+      spec.etaInDays !== undefined ? new Date(NOW + spec.etaInDays * DAY).toISOString() : null,
     items: [{ name: spec.item, quantity: 1, unit_price: spec.total }],
   };
 }
@@ -86,11 +114,23 @@ function buildPorts(c: EvalCase, saved: GenerationRecord[]): GenerationPorts {
   const messages: ConversationContext['messages'] = c.messages.map((m, i) => {
     const attachments = m.image ? [{ id: `img-${i}`, mime_type: 'image/png' }] : [];
     if (m.image) images.set(`img-${i}`, m.image);
-    return { id: `m${i}`, sender_type: m.from, body: m.body, created_at: new Date(NOW - (c.messages.length - i) * 60_000).toISOString(), attachments };
+    return {
+      id: `m${i}`,
+      sender_type: m.from,
+      body: m.body,
+      created_at: new Date(NOW - (c.messages.length - i) * 60_000).toISOString(),
+      attachments,
+    };
   });
   const order = c.order ? orderFacts(c.order) : null;
   const ctx: ConversationContext = {
-    conversation: { id: 'eval-conv', brand_id: brandId, customer_id: CUSTOMER[c.brand].id, order_id: order ? 'eval-order' : null, status: 'open' },
+    conversation: {
+      id: 'eval-conv',
+      brand_id: brandId,
+      customer_id: CUSTOMER[c.brand].id,
+      order_id: order ? 'eval-order' : null,
+      status: 'open',
+    },
     brand: { id: brandId, name: brandName.get(brandId)!, voice: voices.get(c.brand)! },
     customer: { id: CUSTOMER[c.brand].id, name: CUSTOMER[c.brand].name, preferred_language: 'en' },
     messages,
@@ -99,10 +139,23 @@ function buildPorts(c: EvalCase, saved: GenerationRecord[]): GenerationPorts {
   return {
     loadConversation: async () => ctx,
     loadOrder: async () => order,
-    loadPolicies: async (b) => (await realPorts.loadPolicies(b)).filter((p) => !hidden.has(p.category)),
-    search: { search: async (p) => (await realSearch.search(p)).filter((r) => !hidden.has(r.category)) },
+    loadPolicies: async (b) =>
+      (await realPorts.loadPolicies(b)).filter((p) => !hidden.has(p.category)),
+    search: {
+      search: async (p) => (await realSearch.search(p)).filter((r) => !hidden.has(r.category)),
+    },
     listOtherBrandNames: realPorts.listOtherBrandNames,
-    loadImages: async ({ attachmentIds }) => attachmentIds.flatMap((aid) => (images.has(aid) ? [{ id: aid, dataUrl: `data:image/png;base64,${IMAGES[images.get(aid)!].toString('base64')}` }] : [])),
+    loadImages: async ({ attachmentIds }) =>
+      attachmentIds.flatMap((aid) =>
+        images.has(aid)
+          ? [
+              {
+                id: aid,
+                dataUrl: `data:image/png;base64,${IMAGES[images.get(aid)!].toString('base64')}`,
+              },
+            ]
+          : [],
+      ),
     saveGeneration: async (r) => {
       saved.push(r);
       return 'eval-generation';
@@ -130,7 +183,13 @@ async function runOne(c: EvalCase, run: number): Promise<RunResult> {
   try {
     const { state } = await runGeneration(
       { ports: buildPorts(c, saved), llm, config, embeddings },
-      { conversationId: 'eval-conv', brandId: id(`brand:${c.brand}`), customerId: CUSTOMER[c.brand].id, orderId: c.order ? 'eval-order' : null, requestedBy: null },
+      {
+        conversationId: 'eval-conv',
+        brandId: id(`brand:${c.brand}`),
+        customerId: CUSTOMER[c.brand].id,
+        orderId: c.order ? 'eval-order' : null,
+        requestedBy: null,
+      },
     );
     const brandId = id(`brand:${c.brand}`);
     const checks = evaluate(c.expect, {
@@ -144,20 +203,47 @@ async function runOne(c: EvalCase, run: number): Promise<RunResult> {
       sourceBrandIds: state.sources.map((s) => kbBrand.get(s.id) ?? 'unknown'),
       expectedBrandId: brandId,
       brandSignOff: voices.get(c.brand)!.sign_off,
+      expectSignOff: !c.messages.some((m) => m.from === 'agent'),
       otherBrandNames: [...brandName].filter(([bid]) => bid !== brandId).map(([, n]) => n),
       failed: Boolean(state.error),
     });
-    return { caseId: c.id, category: c.category, run, passed: casePassed(checks), checks, reply: state.proposedResponse ?? '', latencyMs: Date.now() - t0, tokens: state.inputTokens + state.outputTokens, attempts: state.attempts, error: state.error?.message };
+    return {
+      caseId: c.id,
+      category: c.category,
+      run,
+      passed: casePassed(checks),
+      checks,
+      reply: state.proposedResponse ?? '',
+      latencyMs: Date.now() - t0,
+      tokens: state.inputTokens + state.outputTokens,
+      attempts: state.attempts,
+      error: state.error?.message,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return { caseId: c.id, category: c.category, run, passed: false, checks: [{ metric: 'safety', name: 'generation_completed', passed: false, detail: message }], reply: '', latencyMs: Date.now() - t0, tokens: 0, attempts: 0, error: message };
+    return {
+      caseId: c.id,
+      category: c.category,
+      run,
+      passed: false,
+      checks: [{ metric: 'safety', name: 'generation_completed', passed: false, detail: message }],
+      reply: '',
+      latencyMs: Date.now() - t0,
+      tokens: 0,
+      attempts: 0,
+      error: message,
+    };
   }
 }
 
 // ------------------------------------------------------------------------------------------------ run
-const selected = cases.filter((c) => (!only || c.id === only) && (!onlyCategory || c.category === onlyCategory));
+const selected = cases.filter(
+  (c) => (!only || c.id === only) && (!onlyCategory || c.category === onlyCategory),
+);
 const jobs = selected.flatMap((c) => Array.from({ length: RUNS }, (_, r) => ({ c, r: r + 1 })));
-console.log(`Evaluating ${selected.length} cases x ${RUNS} runs = ${jobs.length} generations (concurrency ${CONCURRENCY}) with ${config.chatModel}`);
+console.log(
+  `Evaluating ${selected.length} cases x ${RUNS} runs = ${jobs.length} generations (concurrency ${CONCURRENCY}) with ${config.chatModel}`,
+);
 
 const results: RunResult[] = [];
 let next = 0;
@@ -190,7 +276,18 @@ const stable = caseRows.filter((r) => r.passes === RUNS).length;
 const flaky = caseRows.filter((r) => r.passes > 0 && r.passes < RUNS);
 const failing = caseRows.filter((r) => r.passes === 0);
 
-const metricNames: Metric[] = ['intent', 'eligibility', 'escalation', 'groundedness', 'policy_compliance', 'brand', 'language', 'content', 'style', 'safety'];
+const metricNames: Metric[] = [
+  'intent',
+  'eligibility',
+  'escalation',
+  'groundedness',
+  'policy_compliance',
+  'brand',
+  'language',
+  'content',
+  'style',
+  'safety',
+];
 const metricTable = metricNames.map((m) => {
   const checks = results.flatMap((r) => r.checks.filter((x) => x.metric === m));
   return `| ${m} | ${checks.filter((x) => x.passed).length}/${checks.length} | ${pct(checks.filter((x) => x.passed).length, checks.length)} |`;
@@ -208,7 +305,15 @@ const retried = results.filter((r) => r.attempts > 1).length;
 
 const failureDetail = [...failing, ...flaky].map(({ c, rs, passes }) => {
   const worst = rs.find((r) => !r.passed)!;
-  const reasons = [...new Set(rs.flatMap((r) => r.checks.filter((x) => !x.passed).map((x) => `${x.name}${x.detail ? ` (${x.detail})` : ''}`)))];
+  const reasons = [
+    ...new Set(
+      rs.flatMap((r) =>
+        r.checks
+          .filter((x) => !x.passed)
+          .map((x) => `${x.name}${x.detail ? ` (${x.detail})` : ''}`),
+      ),
+    ),
+  ];
   return `### ${c.id}: ${passes}/${RUNS} runs passed\n- Failed checks: ${reasons.join('; ')}\n- Example reply from a failing run:\n\n> ${worst.reply.replace(/\n+/g, '\n> ') || '(no reply)'}\n`;
 });
 
@@ -250,6 +355,9 @@ ${failureDetail.length ? failureDetail.join('\n') : 'None.'}
 `;
 mkdirSync('docs/eval', { recursive: true });
 writeFileSync('docs/eval-results.md', report);
-writeFileSync('docs/eval/eval-results.json', JSON.stringify({ generatedAt: new Date().toISOString(), runs: RUNS, results }, null, 2));
+writeFileSync(
+  'docs/eval/eval-results.json',
+  JSON.stringify({ generatedAt: new Date().toISOString(), runs: RUNS, results }, null, 2),
+);
 console.log(report.split('## By metric')[0]);
 console.log(`Full report: docs/eval-results.md (${failing.length} failing, ${flaky.length} flaky)`);

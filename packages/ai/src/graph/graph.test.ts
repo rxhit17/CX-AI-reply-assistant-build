@@ -22,6 +22,8 @@ const composed = (over: Partial<ComposedReply>): ComposedReply => ({
   promises_replacement: false,
   offers_discount: false,
   claims_action_done: false,
+  questions_asked: [],
+  next_step_documented: true,
   suggest_human_review: false,
   agent_note: null,
   ...over,

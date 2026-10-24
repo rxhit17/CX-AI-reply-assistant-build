@@ -31,7 +31,7 @@ type AiDeps = Pick<Deps, 'db' | 'env' | 'aiConfig' | 'embeddings'> & { runtime: 
 const DRAFT_COLUMNS =
   'id, brand_id, conversation_id, trigger_message_id, requested_by, parent_generation_id, status, intent, language, ' +
   'search_query, original_body, current_body, final_message_id, model, prompt_tokens, completion_tokens, latency_ms, ' +
-  'error_code, error_message, escalate, guardrails, eligibility, order_facts, image_evidence, approved_by, approved_at, ' +
+  'error_code, error_message, escalate, case_state, guardrails, eligibility, order_facts, image_evidence, approved_by, approved_at, ' +
   'sent_by, sent_at, created_at, updated_at';
 
 function throttle(runtime: AiRuntime, userId: string, conversationId: string) {
