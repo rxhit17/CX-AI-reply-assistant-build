@@ -8,6 +8,7 @@ import type { Env } from './env.js';
 import type { EmbeddingService } from '@cx/ai';
 import { toAiConfig } from './ai-config.js';
 import { aiRoutes } from './routes/ai.js';
+import { meRoutes } from './routes/me.js';
 import { brandRoutes } from './routes/brands.js';
 import { conversationRoutes } from './routes/conversations.js';
 import { knowledgeBaseRoutes } from './routes/knowledge-base.js';
@@ -97,6 +98,7 @@ export async function buildApp({
         api.addHook('onRequest', async (req) => {
           req.user = await authenticate(req, db);
         });
+        await api.register(meRoutes, deps);
         await api.register(brandRoutes, deps);
         await api.register(conversationRoutes, deps);
         await api.register(knowledgeBaseRoutes, deps);

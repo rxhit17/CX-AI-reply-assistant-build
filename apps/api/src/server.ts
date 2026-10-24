@@ -11,8 +11,10 @@ const admin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 const aiConfig = toAiConfig(env);
+// Mock mode (tests/CI) uses keyword retrieval: the stored KB vectors come from the real embedding model, so
+// mock vectors would not be comparable to them.
 const embeddings =
-  aiConfig.llmMode === 'mock' || aiConfig.openaiApiKey ? createEmbeddingService(aiConfig) : null;
+  aiConfig.llmMode === 'openai' && aiConfig.openaiApiKey ? createEmbeddingService(aiConfig) : null;
 
 const app = await buildApp({
   db: admin,

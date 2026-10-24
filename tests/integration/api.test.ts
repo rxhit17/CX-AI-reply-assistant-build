@@ -69,6 +69,20 @@ describe('authentication', () => {
   });
 });
 
+describe('identity & customers', () => {
+  it('/me reports the caller’s role and brands from the database', async () => {
+    const res = await call(bloom, 'GET', '/api/me');
+    expect(res.json().user).toMatchObject({ email: 'agent.bloom@demo.test', role: 'agent', brand_ids: [BLOOM] });
+    expect((await call(admin, 'GET', '/api/me')).json().user.role).toBe('admin');
+  });
+  it('/customers lists only the caller’s brand customers with their orders', async () => {
+    const rows = (await call(bloom, 'GET', '/api/customers')).json().customers as { brand_id: string; orders: unknown[] }[];
+    expect(rows.length).toBe(4);
+    expect(new Set(rows.map((r) => r.brand_id))).toEqual(new Set([BLOOM]));
+    expect((await call(bloom, 'GET', `/api/customers?brand_id=${NORDIC}`)).json().customers).toEqual([]);
+  });
+});
+
 describe('brands & conversation access', () => {
   it('lists only the caller’s brands', async () => {
     const res = await call(bloom, 'GET', '/api/brands');
