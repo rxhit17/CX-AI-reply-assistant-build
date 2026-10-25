@@ -1,5 +1,7 @@
 # Progress
 
+> Development log from the original build phases. For the current state of the project, see the [README](../README.md); deployment is documented in [azure-deployment.md](azure-deployment.md).
+
 _Last updated: 2026-10-23_
 
 ## Phase 0 – Planning ✅
@@ -16,7 +18,7 @@ _Last updated: 2026-10-23_
 
 ## Phase 2 – Database ✅ (API/web auth wiring happens in Phase 3)
 
-- Project: Supabase Cloud `dthhteemjmdedzjovkng`. The direct DB host is IPv6-only and unreachable from the dev machine, so `DATABASE_URL` uses the session pooler (`aws-0-ap-south-1`).
+- Project: Supabase Cloud `<project-ref>`. The direct DB host is IPv6-only and unreachable from the dev machine, so `DATABASE_URL` uses the session pooler (`aws-0-ap-south-1`).
 - `pnpm db:migrate` applies migrations 1–5 with checksum tracking. `pnpm db:seed` is idempotent (ran twice).
 - Migration 4: append-only tables still allow cascade deletes. Migration 5: keyword search uses OR semantics, and `match_kb_hybrid` is security-definer with an explicit brand-access check. Both were found by the integration tests.
 - Demo logins: admin@demo.test, agent.bloom@demo.test, agent.nordic@demo.test, agent.multi@demo.test. Password = `SEED_PASSWORD` in `.env`.

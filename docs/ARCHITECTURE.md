@@ -1,5 +1,7 @@
 # Architecture
 
+> Original design document. Hosting has since moved to Azure (see [azure-deployment.md](azure-deployment.md)); the order-verification step, streaming, conversation case state and Hinglish support were added after this was written (see the [README](../README.md) and [conversation-intelligence.md](conversation-intelligence.md)).
+
 AI-powered CX Reply Assistant: agents manage customer conversations and get **draft-only**, brand-grounded AI replies that they edit, approve and send.
 
 ## 1. Topology
