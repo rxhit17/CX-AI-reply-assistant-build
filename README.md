@@ -48,7 +48,7 @@ save the draft. Approval and sending are separate, audited steps.
 
 TypeScript (strict) · pnpm monorepo · React 19, Vite, Tailwind CSS 4, TanStack Query · Fastify 5 · LangChain and
 LangGraph · OpenAI · Supabase (Postgres, pgvector, Auth, Realtime, Storage) · Zod · Vitest and Playwright · Docker ·
-Azure Container Apps and Static Web Apps (Vercel config included).
+Azure Container Apps, Container Registry and Static Web Apps.
 
 ## Repository layout
 
@@ -67,7 +67,6 @@ Azure Container Apps and Static Web Apps (Vercel config included).
 ├── tests/                integration tests (real Supabase project) and Playwright end-to-end tests
 ├── docs/                 architecture, database, deployment, evaluation and calibration reports
 ├── Dockerfile            API image (the web app is static)
-├── vercel.json           Optional: web app on Vercel
 └── .env.example          Every setting, with comments
 ```
 
@@ -183,7 +182,7 @@ for tests and trying the UI, not for real answers.
 
 The API runs as a container and the web app as static files. A step-by-step runbook with one-command scripts for
 **Azure** (Container Apps, Container Registry, Static Web Apps) is in
-[docs/azure-deployment.md](docs/azure-deployment.md). `vercel.json` is included if you prefer Vercel for the web app.
+[docs/azure-deployment.md](docs/azure-deployment.md).
 
 ## Security
 

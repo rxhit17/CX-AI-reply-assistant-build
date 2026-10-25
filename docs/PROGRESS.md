@@ -64,7 +64,7 @@ _Last updated: 2026-10-23_
 ## Blockers / needs user action
 
 - Disable public sign-ups in Supabase (Authentication → Sign In / Providers).
-- Railway/Vercel access for Phase 10.
+- Deployment (Phase 10): done on Azure; see [azure-deployment.md](azure-deployment.md).
 
 ## Task 1 – Conversation intelligence fix ✅ (see docs/conversation-intelligence.md)
 

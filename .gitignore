@@ -8,6 +8,5 @@ supabase/.temp
 playwright-report
 test-results
 *.tsbuildinfo
-.vercel
 .DS_Store
 .claude
