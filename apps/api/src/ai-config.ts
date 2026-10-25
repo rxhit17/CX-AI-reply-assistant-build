@@ -11,6 +11,7 @@ export function toAiConfig(env: Env): AiConfig {
     embeddingModel: env.OPENAI_EMBEDDING_MODEL,
     embeddingDimensions: env.EMBEDDING_DIMENSIONS,
     timeoutMs: env.REQUEST_TIMEOUT_MS,
+    orderGate: { enabled: env.ORDER_GATE_ENABLED, maxAttempts: env.ORDER_GATE_MAX_ATTEMPTS },
     retrieval: {
       minVectorSimilarity: env.RETRIEVAL_MIN_VECTOR_SIMILARITY,
       minFusedScore: env.RETRIEVAL_MIN_FUSED_SCORE,

@@ -1,7 +1,7 @@
 import type { BaseMessage } from '@langchain/core/messages';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { ChatOpenAI } from '@langchain/openai';
-import type { z } from 'zod';
+import { z } from 'zod';
 import type { AiConfig } from '../config.js';
 import {
   composePrompt,
@@ -14,6 +14,7 @@ import {
 } from './prompts.js';
 import {
   composedReplySchema,
+  type ComposedReply,
   imageEvidenceSchema,
   judgeSchema,
   policyFiguresSchema,
@@ -25,6 +26,7 @@ import {
   type LlmResult,
   type UnderstandInput,
 } from './types.js';
+import { partialJsonString } from './partial-json.js';
 
 /** Reasoning-family models reject a custom temperature. */
 const supportsTemperature = (model: string) => !/^(o\d|gpt-5)/i.test(model);
@@ -73,6 +75,46 @@ export function createOpenAiLlm(config: AiConfig): LlmPort {
     return toResult({ raw: out.raw, parsed }, modelName);
   }
 
+  /**
+   * Same call as `structured`, but the JSON is read token by token so the reply text can be previewed while it is
+   * written. (`withStructuredOutput` cannot do this: it returns one chunk at the end.) The complete document is
+   * still parsed and validated with the same Zod schema before anything is returned.
+   */
+  async function streamedCompose(
+    messages: BaseMessage[],
+    onReplyText: (textSoFar: string) => void,
+  ): Promise<LlmResult<ComposedReply>> {
+    const jsonSchema = z.toJSONSchema(composedReplySchema, {
+      target: 'draft-7',
+    } as never) as Record<string, unknown>;
+    delete jsonSchema.$schema;
+    const model = chat.withConfig({
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: 'composed_reply', strict: true, schema: jsonSchema },
+      },
+    } as never);
+
+    let json = '';
+    let sent = '';
+    let usage: Raw['usage_metadata'];
+    for await (const chunk of await model.stream(messages)) {
+      if (typeof chunk.content === 'string') json += chunk.content;
+      if (chunk.usage_metadata) usage = chunk.usage_metadata;
+      const text = partialJsonString(json, 'reply_body');
+      if (text !== null && text !== sent) {
+        sent = text;
+        try {
+          onReplyText(text);
+        } catch {
+          // a failing preview listener must never break generation
+        }
+      }
+    }
+    const parsed = composedReplySchema.parse(JSON.parse(json));
+    return toResult({ raw: { usage_metadata: usage }, parsed }, config.chatModel);
+  }
+
   return {
     chatModel: config.chatModel,
 
@@ -106,9 +148,12 @@ export function createOpenAiLlm(config: AiConfig): LlmPort {
       );
     },
 
-    async compose(input: ComposeInput) {
+    async compose(input: ComposeInput, hooks) {
       const messages = await composePrompt.formatMessages(composeVars(input));
-      return structured(chat, composedReplySchema, 'composed_reply', messages, config.chatModel);
+      if (!hooks?.onReplyText) {
+        return structured(chat, composedReplySchema, 'composed_reply', messages, config.chatModel);
+      }
+      return streamedCompose(messages, hooks.onReplyText);
     },
 
     async extractPolicyFigures({ category, title, content }: ExtractPolicyInput) {

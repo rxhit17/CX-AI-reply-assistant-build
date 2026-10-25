@@ -3,6 +3,7 @@
  * Each check returns a GuardrailResult; any `blocking` failure keeps the draft from reaching the agent
  * as a normal draft (the graph retries once, then falls back safely).
  */
+import { findUnsupportedCoverageClaims } from './claims.js';
 import type { Eligibility, GuardrailResult } from '@cx/shared';
 import { findUnauthorizedProcedures } from './procedure.js';
 import type { DeliveryEstimate, OrderFacts } from './policy/rules.js';
@@ -88,6 +89,9 @@ const ACTION_DONE = [
   /\b(refund|cancel|cancellation|replacement)\b[^.!?\n]{0,20}\b(kar diya|ho gaya|ho gayi|kar di gayi)\b/i,
 ];
 
+/** Wording that makes a remedy conditional on a check ("once verified, we can send ...", "if approved ..."). */
+const HEDGED_REMEDY =
+  /\b(once|after|if|when)\b[^.!?]{0,80}\b(verified|verification|inspect\w*|approved|reviewed|confirmed|received)\b|\b(can|may|could)\s+(send|issue|offer|arrange|provide)\b/i;
 const REFUND_PROMISE = [
   /\b(we('|’)?ll|we will|i('|’)?ll|i will|we are going to|we('|’)?re going to)\s+(\w+\s+){0,3}(refund|reimburse|credit)\b/i,
   /\byou('|’)?ll\s+(get|receive)\s+(a|your|the|an)?\s*(full\s+)?(refund|reimbursement|replacement|credit)\b/i,
@@ -335,7 +339,27 @@ export function validateDraft(input: GuardrailInput): GuardrailResult[] {
     REFUND_PROMISE.some((re) => re.test(text)) ||
     input.selfReported?.promises_refund ||
     input.selfReported?.promises_replacement;
-  if (promisesRefund) {
+  /**
+   * Explaining the policy's remedy is not promising it: with no case being assessed (a general policy question),
+   * "once verified we can send a replacement or refund" restates what the sources say, and is hedged on verification.
+   * An explicit commitment ("we will refund you", "you'll get a refund") is never excused by this.
+   */
+  const explicitCommitment = [0, 1, 2, 4].some((i) => REFUND_PROMISE[i]!.test(text));
+  const describesDocumentedRemedy =
+    input.eligibility.length === 0 &&
+    input.sources.length > 0 &&
+    !explicitCommitment &&
+    /\b(replacement|refund)\b/i.test(sourceText) &&
+    HEDGED_REMEDY.test(text);
+  if (promisesRefund && describesDocumentedRemedy) {
+    out.push(
+      fail(
+        'no_unsupported_promises',
+        'warning',
+        'The draft describes the remedy the policy documents, conditional on verification; it does not commit to it for a specific case',
+      ),
+    );
+  } else if (promisesRefund) {
     out.push(
       refundEligible
         ? fail(
@@ -380,6 +404,20 @@ export function validateDraft(input: GuardrailInput): GuardrailResult[] {
       );
     }
   }
+  const unsupportedClaims = findUnsupportedCoverageClaims(text, sourceText);
+  out.push(
+    unsupportedClaims.length
+      ? fail(
+          'no_unsupported_claim',
+          'blocking',
+          `The draft states what the brand does or does not offer (${unsupportedClaims
+            .map((c) => c.missing.join(', '))
+            .join(
+              '; ',
+            )}), but the policy sources do not mention it. Say you cannot confirm it and the team will follow up.`,
+        )
+      : pass('no_unsupported_claim'),
+  );
   out.push(
     assertsGuarantee(text) && !GUARANTEE.test(sourceText)
       ? fail(

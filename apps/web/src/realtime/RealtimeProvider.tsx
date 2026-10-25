@@ -25,8 +25,11 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
         const row = (payload.new ?? payload.old) as { conversation_id?: string };
         void queryClient.invalidateQueries({ queryKey: ['conversations'] });
-        if (row.conversation_id)
+        if (row.conversation_id) {
           void queryClient.invalidateQueries({ queryKey: ['conversation', row.conversation_id] });
+          // a customer message may have named an order, which links it to the conversation
+          void queryClient.invalidateQueries({ queryKey: ['order', row.conversation_id] });
+        }
       })
       .on(
         'postgres_changes',

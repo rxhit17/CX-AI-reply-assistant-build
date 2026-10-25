@@ -3,6 +3,7 @@ import type { Eligibility, GuardrailResult } from '@cx/shared';
 import type { ImageEvidence, ComposedReply, ComposeMode, Understanding } from '../llm/types.js';
 import type { DeliveryEstimate, OrderFacts, PolicyRef } from '../policy/rules.js';
 import type { Route } from '../policy/intent.js';
+import type { OrderGateResult } from '../policy/order-gate.js';
 import type { Intent } from '@cx/shared';
 import type {
   CaseDerived,
@@ -92,6 +93,9 @@ export const GenerationState = Annotation.Root({
   workflowStage: withDefault<WorkflowStage>('intake'),
   nextAction: withDefault<NextAction>('explain_policy'),
   derived: withDefault<CaseDerived | null>(null),
+
+  /** Result of the order verification step (null when the gate is off). */
+  orderGate: withDefault<OrderGateResult | null>(null),
 
   // ---- evidence
   retrieval: withDefault<RetrievalResult | null>(null),

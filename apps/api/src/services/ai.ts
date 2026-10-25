@@ -1,4 +1,4 @@
-import { createLlm, runGeneration, type LlmPort } from '@cx/ai';
+import { createLlm, runGeneration, type LlmPort, type ProgressEvent } from '@cx/ai';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { assertBrandAccess, type AuthUser } from '../auth.js';
 import type { Deps } from '../deps.js';
@@ -60,6 +60,7 @@ export async function generateDraft(
     conversation_id: string;
     options?: { regenerate_of?: string; extra_instruction?: string };
   },
+  hooks?: { onProgress?: (event: ProgressEvent) => void },
 ) {
   const { db, runtime } = deps;
   // Brand, customer and order come from the database row, never from the request.
@@ -94,6 +95,7 @@ export async function generateDraft(
         llm: runtime.llm,
         config: deps.aiConfig,
         embeddings: deps.embeddings,
+        onProgress: hooks?.onProgress,
       },
       {
         conversationId: conv.id,

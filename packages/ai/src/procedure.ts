@@ -84,12 +84,33 @@ export function findUnauthorizedProcedures(
   opts: { caseHasDefect: boolean },
 ): ProcedureViolation[] {
   const known = authorities(sources);
+  const sentences = splitSentences(reply);
+  /**
+   * Explaining a policy ("...unless the item arrived defective or damaged. In such cases we arrange a prepaid
+   * collection.") is not applying it to this case: every sentence that uses the term is itself about a defect, or
+   * directly follows a sentence that is ("in such cases").
+   */
+  const statedAsDefectCondition = (term: string) => {
+    const uses = sentences
+      .map((text, i) => ({ text, i }))
+      .filter(({ text }) => procedureTermsIn(text).includes(term));
+    return (
+      uses.length > 0 &&
+      uses.every(
+        ({ text, i }) => DEFECT_SCOPE.test(text) || (i > 0 && DEFECT_SCOPE.test(sentences[i - 1]!)),
+      )
+    );
+  };
   const violations: ProcedureViolation[] = [];
   for (const term of new Set(procedureTermsIn(reply))) {
     const matching = known.filter((a) => a.term === term);
     if (matching.length === 0) {
       violations.push({ term, reason: 'not_documented' });
-    } else if (!opts.caseHasDefect && matching.every((a) => a.sentenceScopedToDefect)) {
+    } else if (
+      !opts.caseHasDefect &&
+      matching.every((a) => a.sentenceScopedToDefect) &&
+      !statedAsDefectCondition(term)
+    ) {
       violations.push({ term, reason: 'only_documented_for_defective_items' });
     }
   }

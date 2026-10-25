@@ -55,7 +55,78 @@ async function request<T>(method: string, path: string, body?: unknown, retries 
   }
 }
 
+/**
+ * POST that answers with server-sent events. `onEvent` sees every event; the promise resolves with the `done`
+ * payload and rejects with an ApiError for an `error` event or a broken stream.
+ */
+async function stream<T>(
+  path: string,
+  body: unknown,
+  onEvent: (event: string, data: unknown) => void,
+): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      method: 'POST',
+      headers: { ...(await authHeader()), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new ApiError(
+      0,
+      'NETWORK_ERROR',
+      'Could not reach the server. Check your connection and try again.',
+    );
+  }
+  if (!res.ok || !res.body) return parse<T>(res); // ordinary JSON error (validation, auth, ...)
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result: { value: T } | null = null;
+  const handle = (block: string) => {
+    let event = 'message';
+    let data = '';
+    for (const line of block.split('\n')) {
+      if (line.startsWith('event:')) event = line.slice(6).trim();
+      else if (line.startsWith('data:')) data += line.slice(5).trim();
+    }
+    if (!data) return;
+    const payload: unknown = JSON.parse(data);
+    if (event === 'error') {
+      const e = payload as { status?: number; code?: string; message?: string };
+      throw new ApiError(
+        e.status ?? 500,
+        e.code ?? 'REQUEST_FAILED',
+        e.message ?? 'Request failed',
+      );
+    }
+    if (event === 'done') result = { value: payload as T };
+    else onEvent(event, payload);
+  };
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (value) buffer += decoder.decode(value, { stream: true });
+      let at: number;
+      while ((at = buffer.indexOf('\n\n')) >= 0) {
+        handle(buffer.slice(0, at));
+        buffer = buffer.slice(at + 2);
+      }
+      if (done) break;
+    }
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(0, 'NETWORK_ERROR', 'The connection was interrupted. Please try again.');
+  }
+  if (!result) {
+    throw new ApiError(0, 'NETWORK_ERROR', 'The connection ended before the reply was ready.');
+  }
+  return (result as { value: T }).value;
+}
+
 export const api = {
+  stream,
   get: <T>(path: string) => request<T>('GET', path, undefined, 1),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
   patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),

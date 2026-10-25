@@ -53,6 +53,19 @@ export function useOrder(conversationId: string | undefined) {
   });
 }
 
+export function useCustomerOrders(conversationId: string | undefined) {
+  return useQuery({
+    queryKey: ['customer-orders', conversationId],
+    enabled: Boolean(conversationId),
+    queryFn: async () =>
+      (
+        await api.get<{ orders: OrderRow[] }>(
+          `/api/conversations/${conversationId}/customer-orders`,
+        )
+      ).orders,
+  });
+}
+
 export function useDraft(conversationId: string | undefined) {
   return useQuery({
     queryKey: ['draft', conversationId],

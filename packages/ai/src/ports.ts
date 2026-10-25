@@ -100,6 +100,21 @@ export interface GenerationPorts {
     brandId: string;
     conversationId: string;
   }): Promise<{ id: string; dataUrl: string }[]>;
+  /**
+   * Order verification (optional: the gate is disabled when these are absent). Lists ONLY the given customer's
+   * orders in the given brand, so a number can never be matched against someone else's order.
+   */
+  listCustomerOrders?(
+    brandId: string,
+    customerId: string,
+  ): Promise<{ id: string; order_number: string }[]>;
+  /** Attaches a verified order to the conversation. Must not overwrite an order that is already linked. */
+  linkOrderToConversation?(p: {
+    conversationId: string;
+    brandId: string;
+    customerId: string;
+    orderId: string;
+  }): Promise<void>;
   saveGeneration(record: GenerationRecord): Promise<string>;
   createEscalation(p: {
     brandId: string;

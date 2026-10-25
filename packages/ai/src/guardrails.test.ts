@@ -130,6 +130,62 @@ describe('validateDraft', () => {
     ])('blocks a refund promise when the customer is ineligible: %s', (reply) => {
       expect(failing(base({ reply }))).toContain('no_unsupported_promises');
     });
+    describe('explaining a documented remedy (no case being assessed)', () => {
+      const SRC_DAMAGE = {
+        ...SRC,
+        content:
+          'If an item arrives damaged, report it within 48 hours with a photo. Once verified we will send a free replacement or issue a full refund.',
+      };
+      const general = (reply: string) =>
+        base({ eligibility: [], sources: [SRC_DAMAGE], citedIds: [SRC_DAMAGE.id], reply });
+
+      it('allows a conditional description of what the policy offers', () => {
+        const r = validateDraft(
+          general(
+            'If a plant arrives damaged, report it within 48 hours with a photo. Once verified, we can send a free replacement or issue a full refund, whichever you prefer.',
+          ),
+        );
+        expect(r.find((x) => x.check === 'no_unsupported_promises')?.severity).toBe('warning');
+        expect(hasBlockingFailure(r)).toBe(false);
+      });
+      it('still blocks an explicit commitment', () => {
+        expect(failing(general('We will refund you in full right away.'))).toContain(
+          'no_unsupported_promises',
+        );
+        expect(failing(general("You'll receive a full refund."))).toContain(
+          'no_unsupported_promises',
+        );
+      });
+      it('still blocks it for a specific case that is being assessed', () => {
+        expect(
+          failing(
+            base({
+              eligibility: [inelig],
+              sources: [SRC_DAMAGE],
+              citedIds: [SRC_DAMAGE.id],
+              reply: 'Once verified, we can send a full refund.',
+            }),
+          ),
+        ).toContain('no_unsupported_promises');
+      });
+    });
+    describe('claims about what the brand offers', () => {
+      it('blocks a shipping/payment claim the policy never makes', () => {
+        expect(
+          failing(
+            base({ eligibility: [], reply: 'We currently only ship within the United States.' }),
+          ),
+        ).toContain('no_unsupported_claim');
+        expect(
+          failing(
+            base({ eligibility: [], reply: 'We do not accept Bitcoin as a payment method.' }),
+          ),
+        ).toContain('no_unsupported_claim');
+      });
+      it('does not flag a plain policy statement', () => {
+        expect(failing(base())).not.toContain('no_unsupported_claim');
+      });
+    });
     it('only warns about a refund commitment when eligible', () => {
       const r = validateDraft(
         base({ eligibility: [elig], reply: "You'll receive a refund once we inspect the item." }),

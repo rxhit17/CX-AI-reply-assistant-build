@@ -90,6 +90,11 @@ export function ChatPanel({ conversationId }: { conversationId: string }) {
       clientId.current = newId();
       void queryClient.invalidateQueries({ queryKey: ['conversations'] });
       void queryClient.invalidateQueries({ queryKey: ['draft', conversationId] });
+      // a customer message can name one of their orders, which then gets linked to the conversation
+      if (mode === 'customer') {
+        void queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
+        void queryClient.invalidateQueries({ queryKey: ['order', conversationId] });
+      }
     },
     onError: (err) => toast.error(errorMessage(err)),
   });

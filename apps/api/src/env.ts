@@ -36,6 +36,9 @@ const envSchema = z.object({
   RATE_LIMIT_AI_PER_AGENT_PER_MIN: z.coerce.number().int().positive().default(10),
   RATE_LIMIT_AI_PER_CONVERSATION_PER_MIN: z.coerce.number().int().positive().default(5),
   REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+  // Ask for and verify the order number before answering order-related questions.
+  ORDER_GATE_ENABLED: bool.default(false),
+  ORDER_GATE_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
 
   LANGSMITH_TRACING: bool.default(false),
 });

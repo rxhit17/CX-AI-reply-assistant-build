@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { matchOrderNumber } from '@cx/ai';
 import type { Attachment, Message, SendMessageRequest } from '@cx/shared';
 import { assertBrandAccess, type AuthUser } from '../auth.js';
 import { badRequest, forbidden, notFound } from '../errors.js';
@@ -359,4 +360,47 @@ export async function markRead(
     .eq('sender_type', sender)
     .is('read_at', null);
   if (error) throw new Error(error.message);
+}
+
+/** Every order of the conversation's customer (same brand), newest first, with items. For the agent's reference. */
+export async function listCustomerOrders(db: SupabaseClient, user: AuthUser, id: string) {
+  const conv = await loadConversation(db, user, id);
+  const { data, error } = await db
+    .from('orders')
+    .select('*, items:order_items(id, name, quantity, unit_price)')
+    .eq('brand_id', conv.brand_id)
+    .eq('customer_id', conv.customer_id)
+    .order('placed_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+/**
+ * The customer named one of THEIR orders ("my order is BB-10041"): attach it to the conversation, so the agent sees
+ * it straight away and the assistant works from exactly that order. A different valid number later switches the
+ * order. Only this customer's orders in this brand can match. Returns the newly linked order id, or null.
+ */
+export async function linkOrderFromCustomerMessage(
+  db: SupabaseClient,
+  conv: ConversationRow,
+  text: string,
+): Promise<string | null> {
+  if (!text.trim()) return null;
+  const { data, error } = await db
+    .from('orders')
+    .select('id, order_number')
+    .eq('brand_id', conv.brand_id)
+    .eq('customer_id', conv.customer_id)
+    .limit(200);
+  if (error) throw new Error(error.message);
+  const hit = matchOrderNumber(text, (data ?? []) as { id: string; order_number: string }[]);
+  if (!hit || hit.id === conv.order_id) return null;
+  const { error: updErr } = await db
+    .from('conversations')
+    .update({ order_id: hit.id })
+    .eq('id', conv.id)
+    .eq('brand_id', conv.brand_id)
+    .eq('customer_id', conv.customer_id);
+  if (updErr) throw new Error(updErr.message);
+  return hit.id;
 }

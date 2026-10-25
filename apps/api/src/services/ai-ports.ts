@@ -180,6 +180,37 @@ export function createGenerationPorts(db: SupabaseClient): GenerationPorts {
       return images;
     },
 
+    async listCustomerOrders(brandId, customerId) {
+      const { data, error } = await db
+        .from('orders')
+        .select('id, order_number')
+        .eq('brand_id', brandId)
+        .eq('customer_id', customerId)
+        .limit(200);
+      if (error) throw new Error(error.message);
+      return (data ?? []) as { id: string; order_number: string }[];
+    },
+
+    async linkOrderToConversation({ conversationId, brandId, customerId, orderId }) {
+      // Re-check ownership here as well, then link only while the conversation has no order yet.
+      const { data: owned } = await db
+        .from('orders')
+        .select('id')
+        .eq('id', orderId)
+        .eq('brand_id', brandId)
+        .eq('customer_id', customerId)
+        .maybeSingle();
+      if (!owned) throw new Error('Order does not belong to this customer');
+      const { error } = await db
+        .from('conversations')
+        .update({ order_id: orderId })
+        .eq('id', conversationId)
+        .eq('brand_id', brandId)
+        .eq('customer_id', customerId)
+        .is('order_id', null);
+      if (error) throw new Error(`Failed to link order: ${error.message}`);
+    },
+
     async saveGeneration(record) {
       const { data, error } = await db.rpc('fn_save_generation', { p_payload: record });
       if (error) throw new Error(`Failed to save generation: ${error.message}`);

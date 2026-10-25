@@ -264,7 +264,14 @@ export interface LlmPort {
     dataUrls: string[];
     customerContext: string;
   }): Promise<LlmResult<ImageEvidence>>;
-  compose(input: ComposeInput): Promise<LlmResult<ComposedReply>>;
+  /**
+   * `hooks.onReplyText` receives the reply text as it is being written (the whole text so far, repeatedly), for a
+   * live preview. It never replaces the returned, schema-validated value.
+   */
+  compose(
+    input: ComposeInput,
+    hooks?: { onReplyText?: (textSoFar: string) => void },
+  ): Promise<LlmResult<ComposedReply>>;
   judge(input: JudgeInput): Promise<LlmResult<JudgeResult>>;
   /** Reads the eligibility figures out of a policy. `null` when this implementation cannot (the mock). */
   extractPolicyFigures(input: ExtractPolicyInput): Promise<LlmResult<PolicyFigures | null>>;

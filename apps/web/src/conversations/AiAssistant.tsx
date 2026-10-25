@@ -10,7 +10,7 @@ import {
   Sparkles,
   Trash2,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/form';
@@ -36,22 +36,37 @@ const OUTCOME_TONE = {
 } as const;
 const STATUS_TONE = { draft: 'blue', edited: 'amber', approved: 'green' } as const;
 
-const THINKING_STEPS = [
-  'Reasoning about the customer’s request',
-  'Retrieving the verified order details',
-  'Searching this brand’s policies',
-  'Checking eligibility',
-  'Creating the message',
-  'Running safety checks',
-] as const;
+/** What the server is doing, in plain words, for each workflow stage it reports. */
+const STAGE_LABEL: Record<string, string> = {
+  loadConversation: 'Reading the conversation',
+  loadVerifiedOrderFacts: 'Retrieving the verified order details',
+  understandIntent: 'Reasoning about the customer’s request',
+  updateCaseState: 'Reasoning about the customer’s request',
+  verifyOrder: 'Checking the order number',
+  decideNextAction: 'Deciding the next step',
+  generateOrderRequest: 'Asking for the order number',
+  analyzeImage: 'Looking at the photo',
+  rewriteQuery: 'Searching this brand’s policies',
+  retrieveBrandKnowledge: 'Searching this brand’s policies',
+  getOrderDetails: 'Checking the order',
+  evaluateEligibility: 'Checking eligibility',
+  generateResponse: 'Writing the message',
+  generateConversationalDraft: 'Writing the message',
+  generateEscalationDraft: 'Writing the message',
+  generateSafeFallback: 'Writing the message',
+  validateResponse: 'Running safety checks',
+  safeFallback: 'Preparing a safe reply',
+  saveDraft: 'Saving the draft',
+};
 
-/** Animated "AI thinking" progress: the steps advance on a timer and the last one keeps pulsing until the draft arrives. */
-function ThinkingCard() {
-  const [step, setStep] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setStep((n) => Math.min(n + 1, THINKING_STEPS.length - 1)), 2200);
-    return () => clearInterval(t);
-  }, []);
+interface Progress {
+  labels: string[];
+  text: string;
+}
+
+/** Live progress of a generation: real stages reported by the server, and the reply as it is written. */
+function ThinkingCard({ progress }: { progress: Progress }) {
+  const labels = progress.labels.length > 0 ? progress.labels : ['Starting'];
   return (
     <Card className="space-y-3 p-3" role="status" data-testid="generating">
       <p className="flex items-center gap-2 text-sm font-medium">
@@ -67,11 +82,11 @@ function ThinkingCard() {
         </span>
       </p>
       <ul className="space-y-1.5 text-xs">
-        {THINKING_STEPS.slice(0, step + 1).map((label, i) => {
-          const active = i === step;
+        {labels.map((label, i) => {
+          const active = i === labels.length - 1;
           return (
             <li
-              key={label}
+              key={`${label}-${i}`}
               className={`flex step-in items-center gap-2 ${
                 active ? 'text-foreground' : 'text-muted-foreground'
               }`}
@@ -89,6 +104,17 @@ function ThinkingCard() {
           );
         })}
       </ul>
+      {progress.text && (
+        <div className="space-y-1" data-testid="draft-preview">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Draft preview · being checked
+          </p>
+          <p className="whitespace-pre-wrap rounded-md border bg-muted/30 p-2 text-sm">
+            {progress.text}
+            <span className="ml-0.5 inline-block h-3.5 w-1 animate-pulse bg-primary align-middle" />
+          </p>
+        </div>
+      )}
     </Card>
   );
 }
@@ -117,6 +143,7 @@ export function AiAssistant({
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['draft', conversationId] });
     void queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
+    void queryClient.invalidateQueries({ queryKey: ['order', conversationId] });
     void queryClient.invalidateQueries({ queryKey: ['conversations'] });
     void queryClient.invalidateQueries({ queryKey: ['logs'] });
   };
@@ -125,20 +152,45 @@ export function AiAssistant({
     if (err instanceof ApiError && ['STALE_POLICY', 'INVALID_STATE'].includes(err.code)) refresh();
   };
 
+  const [progress, setProgress] = useState<Progress>({ labels: [], text: '' });
+  const onStreamEvent = (event: string, data: unknown) => {
+    if (event === 'step') {
+      const label = STAGE_LABEL[(data as { node: string }).node];
+      if (label)
+        setProgress((p) =>
+          p.labels.at(-1) === label ? p : { ...p, labels: [...p.labels, label] },
+        );
+    } else if (event === 'draft_text') {
+      setProgress((p) => ({ ...p, text: (data as { text: string }).text }));
+    } else if (event === 'draft_reset') {
+      setProgress((p) => ({ ...p, text: '' }));
+    }
+  };
+
   const generate = useMutation({
-    mutationFn: (regenerateOf?: string) =>
-      regenerateOf
-        ? api.post<DraftResponse>('/api/ai/regenerate', {
-            conversation_id: conversationId,
-            options: {
-              regenerate_of: regenerateOf,
-              extra_instruction: instruction.trim() || undefined,
+    mutationFn: (regenerateOf?: string) => {
+      setProgress({ labels: [], text: '' });
+      return regenerateOf
+        ? api.stream<DraftResponse>(
+            '/api/ai/regenerate/stream',
+            {
+              conversation_id: conversationId,
+              options: {
+                regenerate_of: regenerateOf,
+                extra_instruction: instruction.trim() || undefined,
+              },
             },
-          })
-        : api.post<DraftResponse>('/api/ai/generate', {
-            conversation_id: conversationId,
-            options: instruction.trim() ? { extra_instruction: instruction.trim() } : undefined,
-          }),
+            onStreamEvent,
+          )
+        : api.stream<DraftResponse>(
+            '/api/ai/generate/stream',
+            {
+              conversation_id: conversationId,
+              options: instruction.trim() ? { extra_instruction: instruction.trim() } : undefined,
+            },
+            onStreamEvent,
+          );
+    },
     onSuccess: (res) => {
       apply(res);
       setInstruction('');
@@ -246,7 +298,7 @@ export function AiAssistant({
         )}
       </div>
 
-      {generate.isPending && <ThinkingCard />}
+      {generate.isPending && <ThinkingCard progress={progress} />}
 
       {!draft && !generate.isPending && (
         <Card className="space-y-2 p-3">

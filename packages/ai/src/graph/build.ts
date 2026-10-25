@@ -21,6 +21,13 @@ import {
 } from '../case-state.js';
 import { categoriesForIntent, looksLikePromptInjection } from '../policy/intent.js';
 import {
+  hasOrderNumberCandidate,
+  matchOrderNumber,
+  needsOrderData,
+  orderRequestMessage,
+  type OrderGateResult,
+} from '../policy/order-gate.js';
+import {
   decideNextAction as decide,
   ELIGIBILITY_TOPIC_INTENTS,
   finalizeNextAction,
@@ -42,12 +49,21 @@ import {
 } from './assemble.js';
 import { GenerationState, type GState, type GUpdate, type SourceRef } from './state.js';
 
+/** Live progress of one run (for streaming the generation to the UI). Purely informational. */
+export type ProgressEvent =
+  | { type: 'step'; node: string }
+  /** The reply text written so far (the whole text, repeatedly). A preview: it is still being checked. */
+  | { type: 'draft_text'; text: string }
+  /** The preview was rejected by the safety checks and is being rewritten. */
+  | { type: 'draft_reset' };
+
 export interface GraphDeps {
   ports: GenerationPorts;
   llm: LlmPort;
   config: AiConfig;
   embeddings: EmbeddingService | null;
   now?: () => Date;
+  onProgress?: (event: ProgressEvent) => void;
 }
 
 export interface GenerationInput {
@@ -74,12 +90,20 @@ export function buildGenerationGraph(deps: GraphDeps) {
   const now = deps.now ?? (() => new Date());
   // One registry per run, bound to the run's trusted scope (set in `loadConversation`'s closure).
   let tools: ToolRegistry;
+  const emit = (event: ProgressEvent) => {
+    try {
+      deps.onProgress?.(event);
+    } catch {
+      // a failing listener must never break a run
+    }
+  };
 
   /** Wraps a node with timing/tracing and converts exceptions into `state.error` (no unhandled throw mid-graph). */
   const node =
     (name: string, fn: NodeFn): NodeFn =>
     async (s) => {
       const t0 = Date.now();
+      emit({ type: 'step', node: name });
       try {
         const update = await fn(s);
         const own = Array.isArray(update.trace) ? update.trace : [];
@@ -229,6 +253,126 @@ export function buildGenerationGraph(deps: GraphDeps) {
         .slice(-6)
         .some((m) => norm(m.body) === latestText);
     return { caseState, nextStepAlreadyGiven, previouslyStatedFigures, customerRepeated };
+  });
+
+  const orderGateOn = Boolean(
+    config.orderGate?.enabled && ports.listCustomerOrders && ports.linkOrderToConversation,
+  );
+
+  /**
+   * Order verification (only when enabled). If the customer's question needs order data and no order is linked, the
+   * order number must be found among THIS customer's orders (deterministic match, any customer message). A match
+   * is linked to the conversation and the normal flow continues; otherwise the draft asks for the number.
+   */
+  const verifyOrder = node('verifyOrder', async (s) => {
+    const u = s.understanding!;
+    const none = (note: string): GUpdate => ({
+      orderGate: { outcome: 'not_needed', failedAttempts: 0 },
+      trace: [{ node: 'verifyOrder', ms: 0, note }],
+    });
+    if (s.orderFacts !== null) return none('order already linked');
+    if (u.asks_for_human || u.intent === 'human_agent_request') return none('human requested');
+    if (s.sideQuestion) return none('side question');
+    if (!needsOrderData(u.intent, s.caseState!.issue_type)) return none('question needs no order');
+
+    const orders = await ports.listCustomerOrders!(s.brandId, s.customerId);
+    const customerMessages = s.context!.messages.filter(
+      (m) => m.sender_type === 'customer' && m.body.trim(),
+    );
+    let failedAttempts = 0;
+    for (const m of [...customerMessages].reverse()) {
+      const hit = matchOrderNumber(m.body, orders);
+      if (hit) {
+        await ports.linkOrderToConversation!({
+          conversationId: s.conversationId,
+          brandId: s.brandId,
+          customerId: s.customerId,
+          orderId: hit.id,
+        });
+        // Rebuild the tool registry so every later step sees the verified order.
+        tools = createToolRegistry(
+          {
+            brandId: s.brandId,
+            customerId: s.customerId,
+            conversationId: s.conversationId,
+            orderId: hit.id,
+            actorId: s.requestedBy,
+          },
+          { ports, llm, embeddings: deps.embeddings, thresholds: config.retrieval, now },
+        );
+        const orderFacts = await tools.getOrderDetails();
+        if (orderFacts) {
+          const orderGate: OrderGateResult = {
+            outcome: 'verified',
+            failedAttempts,
+            orderNumber: orderFacts.order_number,
+          };
+          return {
+            orderId: hit.id,
+            orderFacts,
+            orderGate,
+            trace: [{ node: 'verifyOrder', ms: 0, note: `verified ${orderFacts.order_number}` }],
+          };
+        }
+      } else if (hasOrderNumberCandidate(m.body)) {
+        failedAttempts += 1;
+      }
+    }
+    const outcome = failedAttempts >= (config.orderGate?.maxAttempts ?? 3) ? 'handoff' : 'ask';
+    return {
+      orderGate: { outcome, failedAttempts },
+      trace: [
+        { node: 'verifyOrder', ms: 0, note: `${outcome}; failed attempts ${failedAttempts}` },
+      ],
+    };
+  });
+
+  /** Fixed-wording draft that asks for (or re-asks for) the order number, or hands over after too many misses. */
+  const generateOrderRequest = node('generateOrderRequest', async (s) => {
+    const gate = s.orderGate!;
+    const outcome = gate.outcome === 'handoff' ? 'handoff' : 'ask';
+    const body = assembleReply({
+      body: orderRequestMessage(s.replyLanguage, outcome, gate.failedAttempts),
+      voice: s.context!.brand.voice,
+      customerName: s.context!.customer.name,
+      addGreeting: s.replyLanguage === 'en' && !s.priorAgentMessage,
+      addSignOff: shouldAddSignOff({
+        priorAgentMessage: s.priorAgentMessage,
+        lastAgentAt: s.lastAgentAt,
+        now: now().getTime(),
+      }),
+    });
+    const handoff = outcome === 'handoff';
+    const derived: CaseDerived = {
+      workflow_stage: handoff ? 'handoff' : 'gathering_information',
+      next_action: handoff ? 'handoff_to_human' : 'ask_missing_info',
+      missing_information: ['order_reference'],
+      eligibility_status: 'not_applicable',
+    };
+    return {
+      proposedResponse: body,
+      composeMode: 'clarify' as ComposeMode,
+      derived,
+      nextAction: derived.next_action,
+      workflowStage: derived.workflow_stage,
+      missingInformation: derived.missing_information,
+      escalate: handoff,
+      escalationReason: handoff
+        ? 'The customer could not give an order number that matches their account'
+        : null,
+      guardrails: [
+        {
+          check: 'order_verification',
+          passed: true,
+          severity: 'info' as const,
+          detail: handoff
+            ? `No matching order after ${gate.failedAttempts} attempts; handed to a person`
+            : gate.failedAttempts > 0
+              ? 'The order number given did not match this customer; asked again'
+              : 'No order is linked; asked the customer for the order number',
+        },
+      ],
+    };
   });
 
   /** Decides route, required checks and the next support action from the case state (deterministic). */
@@ -434,40 +578,47 @@ export function buildGenerationGraph(deps: GraphDeps) {
       if (pending.missingInformation.length > 0)
         openCaseNote = `the open case is still waiting on: ${pending.missingInformation.join(', ')}`;
     }
-    const result = await llm.compose({
-      mode,
-      nextAction: derived.next_action,
-      caseSummary: describeCaseState(caseState),
-      missingInformation: derived.missing_information,
-      avoidAsking: [
-        ...answeredTopics(caseState, {
-          orderLinked: s.orderFacts !== null,
-          customerSentImage: s.customerSentImage,
-        }),
-      ],
-      lastAgentReply: s.lastAgentReply,
-      alreadyStatedFigures: s.previouslyStatedFigures,
-      asksClarification: s.asksClarification,
-      brand: { name: ctx.brand.name, tone: voice.tone, style: voice.communication_style },
-      replyLanguage: s.replyLanguage,
-      includeGreetingInBody:
-        s.replyLanguage !== 'en' && !s.priorAgentMessage && Boolean(voice.greeting_preference),
-      customerFirstName: firstName(ctx.customer.name),
-      history: toHistory(earlier).slice(-HISTORY_WINDOW),
-      latestCustomerMessage: latest.body,
-      unansweredMessages,
-      sideQuestion: s.sideQuestion,
-      openCaseNote,
-      customerSentImage: s.customerSentImage,
-      imageEvidence: s.imageEvidence,
-      imageAnalysisFailed: s.imageAnalysisFailed,
-      orderFacts: s.orderFacts,
-      deliveryEstimate: s.deliveryEstimate,
-      eligibility: s.eligibility,
-      sources: s.sources.map((x) => ({ label: x.label, title: x.title, content: x.content })),
-      extraInstruction: s.extraInstruction ?? undefined,
-      violationFeedback: s.attempts > 0 ? s.violationFeedback : undefined,
-    });
+    if (s.attempts > 0) emit({ type: 'draft_reset' });
+    const result = await llm.compose(
+      {
+        mode,
+        nextAction: derived.next_action,
+        caseSummary: describeCaseState(caseState),
+        missingInformation: derived.missing_information,
+        avoidAsking: [
+          ...answeredTopics(caseState, {
+            orderLinked: s.orderFacts !== null,
+            customerSentImage: s.customerSentImage,
+          }),
+        ],
+        lastAgentReply: s.lastAgentReply,
+        alreadyStatedFigures: s.previouslyStatedFigures,
+        asksClarification: s.asksClarification,
+        brand: { name: ctx.brand.name, tone: voice.tone, style: voice.communication_style },
+        replyLanguage: s.replyLanguage,
+        includeGreetingInBody:
+          s.replyLanguage !== 'en' && !s.priorAgentMessage && Boolean(voice.greeting_preference),
+        customerFirstName: firstName(ctx.customer.name),
+        history: toHistory(earlier).slice(-HISTORY_WINDOW),
+        latestCustomerMessage: latest.body,
+        unansweredMessages,
+        sideQuestion: s.sideQuestion,
+        openCaseNote,
+        customerSentImage: s.customerSentImage,
+        imageEvidence: s.imageEvidence,
+        imageAnalysisFailed: s.imageAnalysisFailed,
+        orderFacts: s.orderFacts,
+        deliveryEstimate: s.deliveryEstimate,
+        eligibility: s.eligibility,
+        sources: s.sources.map((x) => ({ label: x.label, title: x.title, content: x.content })),
+        extraInstruction: s.extraInstruction ?? undefined,
+        violationFeedback: s.attempts > 0 ? s.violationFeedback : undefined,
+      },
+      // The preview only streams the model's own text; greeting/sign-off are added by code after validation.
+      deps.onProgress
+        ? { onReplyText: (text: string) => emit({ type: 'draft_text', text }) }
+        : undefined,
+    );
     const body = assembleReply({
       body: result.value.reply_body,
       voice,
@@ -538,6 +689,11 @@ export function buildGenerationGraph(deps: GraphDeps) {
     if (failed.has('no_unrequested_eligibility') || failed.has('eligibility_claim_supported')) {
       out.push(
         'Do not state or imply eligibility. Acknowledge the problem and ask the single question that clarifies what happened and what the customer would like.',
+      );
+    }
+    if (failed.has('no_unsupported_claim')) {
+      out.push(
+        'The policy sources do not say what the brand does or does not offer on this point (for example countries shipped to or payment methods accepted). Do not say yes or no and do not describe what the brand "currently" does. Say you cannot confirm it from the information you have and that the support team will follow up; set suggest_human_review=true.',
       );
     }
     if (failed.has('no_invented_procedure')) {
@@ -809,6 +965,12 @@ export function buildGenerationGraph(deps: GraphDeps) {
   // ------------------------------------------------------------------------------------------------
   const failOr = (next: string) => (s: GState) => (s.error ? 'saveFailure' : next);
 
+  const afterVerifyOrder = (s: GState) => {
+    if (s.error) return 'saveFailure';
+    const outcome = s.orderGate?.outcome;
+    return outcome === 'ask' || outcome === 'handoff' ? 'generateOrderRequest' : 'decideNextAction';
+  };
+
   const afterDecision = (s: GState) => {
     if (s.error) return 'saveFailure';
     switch (s.route) {
@@ -838,6 +1000,8 @@ export function buildGenerationGraph(deps: GraphDeps) {
     .addNode('loadVerifiedOrderFacts', loadVerifiedOrderFacts)
     .addNode('understandIntent', understandIntent)
     .addNode('updateCaseState', updateCaseState)
+    .addNode('verifyOrder', verifyOrder)
+    .addNode('generateOrderRequest', generateOrderRequest)
     .addNode('decideNextAction', decideNextAction)
     .addNode('generateConversationalDraft', generateConversationalDraft)
     .addNode('getOrderDetails', getOrderDetails)
@@ -865,10 +1029,18 @@ export function buildGenerationGraph(deps: GraphDeps) {
       'updateCaseState',
       'saveFailure',
     ])
-    .addConditionalEdges('updateCaseState', failOr('decideNextAction'), [
+    // With the order gate off the graph is exactly the original one (verifyOrder is never visited).
+    .addConditionalEdges(
+      'updateCaseState',
+      failOr(orderGateOn ? 'verifyOrder' : 'decideNextAction'),
+      ['decideNextAction', 'verifyOrder', 'saveFailure'],
+    )
+    .addConditionalEdges('verifyOrder', afterVerifyOrder, [
       'decideNextAction',
+      'generateOrderRequest',
       'saveFailure',
     ])
+    .addConditionalEdges('generateOrderRequest', failOr('saveDraft'), ['saveDraft', 'saveFailure'])
     .addConditionalEdges('decideNextAction', afterDecision, [
       'generateConversationalDraft',
       'getOrderDetails',

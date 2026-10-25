@@ -44,6 +44,31 @@ describe('findUnauthorizedProcedures', () => {
     expect(v).toEqual([{ term: 'collection', reason: 'only_documented_for_defective_items' }]);
   });
 
+  it('explaining the policy ("in such cases we arrange a collection") is not applying it to this case', () => {
+    const explained =
+      'Items can be returned within 30 days if unused. Return shipping is paid by the customer unless the item arrived defective or damaged. In such cases, we arrange a prepaid collection.';
+    expect(
+      findUnauthorizedProcedures(explained, [NORDIC_RETURN], { caseHasDefect: false }),
+    ).toEqual([]);
+    // same sentence stated as a condition on the defect itself
+    expect(
+      findUnauthorizedProcedures(
+        'If your item arrived damaged, we arrange a prepaid collection.',
+        [NORDIC_RETURN],
+        { caseHasDefect: false },
+      ),
+    ).toEqual([]);
+  });
+
+  it('still blocks a collection promised for the customer’s own return, even next to a damage mention', () => {
+    const v = findUnauthorizedProcedures(
+      'We will arrange a prepaid collection of your table. Thank you for your patience.',
+      [NORDIC_RETURN],
+      { caseHasDefect: false },
+    );
+    expect(v).toEqual([{ term: 'collection', reason: 'only_documented_for_defective_items' }]);
+  });
+
   it('the same collection is allowed when the case involves a defect', () => {
     expect(
       findUnauthorizedProcedures('We will arrange a prepaid collection.', [NORDIC_RETURN], {

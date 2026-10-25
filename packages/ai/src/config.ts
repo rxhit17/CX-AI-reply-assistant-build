@@ -10,6 +10,8 @@ export interface AiConfig {
   retrieval: RetrievalThresholds;
   /** Per-call network timeout for model requests. */
   timeoutMs: number;
+  /** Ask for and verify the order number before answering order-related questions. Off when absent. */
+  orderGate?: { enabled: boolean; maxAttempts: number };
 }
 
 export interface RetrievalThresholds {

@@ -25,7 +25,8 @@
     "eval": "tsx --env-file-if-exists=.env scripts/eval/run.ts",
     "export:policies": "tsx --env-file-if-exists=.env scripts/export-policy-pdfs.ts",
     "eval:conversation": "tsx --env-file-if-exists=.env scripts/eval/conversation.ts",
-    "db:seed": "tsx --env-file-if-exists=.env scripts/seed.ts"
+    "db:seed": "tsx --env-file-if-exists=.env scripts/seed.ts",
+    "db:clear-chats": "tsx --env-file-if-exists=.env scripts/clear-conversations.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",

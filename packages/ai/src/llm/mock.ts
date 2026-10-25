@@ -226,7 +226,7 @@ export function createMockLlm(): LlmPort {
       return wrap(value);
     },
 
-    async compose(input: ComposeInput) {
+    async compose(input: ComposeInput, hooks?: { onReplyText?: (textSoFar: string) => void }) {
       const lines: string[] = [];
       const cited: string[] = [];
       const questions: QuestionTopic[] = [];
@@ -359,6 +359,7 @@ export function createMockLlm(): LlmPort {
         suggest_human_review: humanReview,
         agent_note: null,
       };
+      hooks?.onReplyText?.(replyBody);
       return wrap(value);
     },
 

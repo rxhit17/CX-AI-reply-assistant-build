@@ -12,7 +12,10 @@ import {
   createConversation,
   getConversationDetail,
   getOrderForConversation,
+  linkOrderFromCustomerMessage,
   listConversations,
+  listCustomerOrders,
+  loadConversation,
   markRead,
   sendMessage,
   setConversationStatus,
@@ -27,7 +30,7 @@ const listQuery = z.object({
   q: z.string().trim().max(100).optional(),
 });
 
-export async function conversationRoutes(app: FastifyInstance, { db }: Deps) {
+export async function conversationRoutes(app: FastifyInstance, { db, env }: Deps) {
   await app.register(multipart, { limits: { fileSize: MAX_IMAGE_BYTES, files: 1, fields: 0 } });
 
   app.get('/conversations', async (req) => {
@@ -57,6 +60,11 @@ export async function conversationRoutes(app: FastifyInstance, { db }: Deps) {
     return { order: await getOrderForConversation(db, req.user, id) };
   });
 
+  app.get('/conversations/:id/customer-orders', async (req) => {
+    const { id } = idParam.parse(req.params);
+    return { orders: await listCustomerOrders(db, req.user, id) };
+  });
+
   app.post(
     '/conversations/:id/messages',
     { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
@@ -64,6 +72,18 @@ export async function conversationRoutes(app: FastifyInstance, { db }: Deps) {
       const { id } = idParam.parse(req.params);
       const body = sendMessageRequestSchema.parse(req.body);
       const { message, duplicate } = await sendMessage(db, req.user, id, body);
+      if (env.ORDER_GATE_ENABLED && !duplicate && body.sender_type === 'customer') {
+        // The customer named one of their orders: attach it now (best effort; the message is already saved).
+        try {
+          await linkOrderFromCustomerMessage(
+            db,
+            await loadConversation(db, req.user, id),
+            body.body,
+          );
+        } catch (err) {
+          req.log.warn({ err }, 'could not link the order named in the customer message');
+        }
+      }
       return reply.status(duplicate ? 200 : 201).send({ message, duplicate });
     },
   );
